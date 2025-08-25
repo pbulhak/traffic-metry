@@ -1,0 +1,56 @@
+[project]
+name = "trafficmetry"
+version = "0.1.0"
+description = "A system for monitoring and analyzing local street traffic using AI"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Piotr Bułhak"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "opencv-python>=4.8.0",
+    "ultralytics>=8.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "websockets>=12.0",
+    "sqlite3",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.6",
+    "mypy>=1.7.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v"

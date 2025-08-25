@@ -1,0 +1,79 @@
+```gitignore
+# ## .gitignore for TrafficMetry Project ##
+
+*.md
+!README.md
+
+# Ignore directories for private notes and prompts
+/.claude/
+/.github/
+
+
+# --- Secrets & Environment Variables (CRITICAL) ---
+# Never commit environment variables files. They contain secrets!
+.env
+*.env
+*.env.*
+!*.env.example
+
+
+# --- AI Models & Datasets (CRITICAL) ---
+# Model files are huge and should not be in Git. They should be downloaded separately.
+*.pt
+*.weights
+*.onnx
+# Raw and processed data should not be in Git.
+# We keep the directories but ignore their contents.
+/data/
+!data/.gitkeep
+# Add a .gitkeep file to these empty directories if you want to commit the structure.
+
+
+# --- Python & Virtual Environments ---
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+# UV cache
+.uv_cache/
+# Python bytecode and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+# C extensions
+*.so
+
+
+# --- Testing & Tooling Cache ---
+# Pytest cache
+.pytest_cache/
+# Coverage reports
+htmlcov/
+.coverage
+# MyPy cache
+.mypy_cache/
+
+
+# --- IDE / Editor Configuration ---
+# VS Code
+.vscode/
+# PyCharm
+.idea/
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+
+# --- OS Generated Files ---
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+```
