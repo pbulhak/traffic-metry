@@ -9,6 +9,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 from backend.config import CameraSettings
 
@@ -91,7 +92,7 @@ class CameraStream:
             logger.error(error_msg)
             raise CameraConnectionError(error_msg, self._settings.url) from e
 
-    def get_frame(self) -> np.ndarray[Any, np.dtype[Any]] | None:
+    def get_frame(self) -> NDArray | None:
         """Capture a frame from camera stream.
 
         Uses lazy connection - establishes connection on first call if needed.
