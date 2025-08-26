@@ -4,7 +4,7 @@ This module provides shared pytest fixtures used across all test modules,
 including configuration reset for test isolation.
 """
 
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 

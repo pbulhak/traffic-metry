@@ -7,7 +7,7 @@ configuration files for changes and restarts the server accordingly.
 
 from pathlib import Path
 
-import uvicorn  # type: ignore[import-not-found]
+import uvicorn
 
 
 def main() -> None:
