@@ -195,3 +195,14 @@ def get_config() -> Settings:
     if _config is None:
         _config = load_config()
     return _config
+
+
+def reset_config() -> None:
+    """Reset global configuration instance (for testing purposes only).
+
+    This function clears the global configuration singleton, forcing
+    get_config() to reload configuration on next call. Intended for
+    use in test environments to ensure test isolation.
+    """
+    global _config
+    _config = None
