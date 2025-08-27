@@ -26,6 +26,7 @@ from numpy.typing import NDArray
 
 from backend.camera_stream import CameraConnectionError, CameraStream
 from backend.config import Settings, ModelSettings, get_config
+from backend.database import EventDatabase, DatabaseError
 from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
 
@@ -364,6 +365,7 @@ class TrafficMetryProcessor:
             self.lane_analyzer = LaneAnalyzer(config.lanes)
             self.event_generator = EventGenerator()
             self.candidate_saver = CandidateSaver(Path("data/unlabeled_images"), config.model)
+            self.event_database = EventDatabase(config.database)
 
             logger.info("All components initialized successfully")
 
@@ -393,6 +395,10 @@ class TrafficMetryProcessor:
         last_stats_time = start_time
 
         try:
+            # Connect to database first
+            await self.event_database.connect()
+            logger.info("Database connection established")
+
             with self.camera:
                 logger.info("Camera connection established")
 
@@ -442,6 +448,8 @@ class TrafficMetryProcessor:
             logger.error(f"Fatal error in main loop: {e}")
 
         finally:
+            # Close database connection
+            await self.event_database.close()
             logger.info("TrafficMetry processing stopped")
             self._log_final_statistics()
 
@@ -459,6 +467,13 @@ class TrafficMetryProcessor:
             # Generate API event
             event = self.event_generator.create_vehicle_event(detection, lane_number, direction)
             self.event_count += 1
+
+            # Save event to database
+            try:
+                await self.event_database.save_event(event)
+                logger.debug(f"Event {event['eventId']} saved to database")
+            except DatabaseError as e:
+                logger.error(f"Failed to save event to database: {e}")
 
             # Log event (in future this will be sent via WebSocket)
             logger.info(
