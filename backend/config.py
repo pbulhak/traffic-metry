@@ -60,7 +60,6 @@ class DatabaseSettings(BaseModel):
     """Database configuration settings."""
 
     path: str = Field(default="data/trafficmetry.db", description="Path to SQLite database file")
-    max_records: int = Field(default=1000000, ge=1000, description="Maximum records before cleanup")
 
 
 class ServerSettings(BaseModel):
