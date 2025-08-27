@@ -8,7 +8,6 @@ import logging
 from typing import Any
 
 import cv2
-import numpy as np
 from numpy.typing import NDArray
 
 from backend.config import CameraSettings

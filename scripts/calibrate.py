@@ -148,9 +148,7 @@ class LineManager:
 
         return lanes
 
-    def get_lane_at_point(
-        self, x: int, y: int, frame_width: int, frame_height: int
-    ) -> int | None:
+    def get_lane_at_point(self, x: int, y: int, frame_width: int, frame_height: int) -> int | None:
         """Find horizontal lane ID at given coordinates."""
         lanes = self.generate_lanes(frame_width, frame_height)
         for lane_id, lane in lanes.items():

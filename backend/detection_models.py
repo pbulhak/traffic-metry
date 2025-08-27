@@ -79,15 +79,19 @@ class DetectionResult:
     detection_id: str
     frame_timestamp: float
     frame_id: int
-    frame_shape: tuple[int, int, int]
+    frame_shape: tuple
 
     def __post_init__(self) -> None:
         """Validate detection result data after initialization."""
         if self.x1 >= self.x2:
-            raise ValueError(f"Invalid bounding box: x1 ({self.x1}) must be less than x2 ({self.x2})")
+            raise ValueError(
+                f"Invalid bounding box: x1 ({self.x1}) must be less than x2 ({self.x2})"
+            )
 
         if self.y1 >= self.y2:
-            raise ValueError(f"Invalid bounding box: y1 ({self.y1}) must be less than y2 ({self.y2})")
+            raise ValueError(
+                f"Invalid bounding box: y1 ({self.y1}) must be less than y2 ({self.y2})"
+            )
 
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"Confidence must be between 0.0 and 1.0, got {self.confidence}")
@@ -159,7 +163,7 @@ class DetectionResult:
         vehicle_type: VehicleType,
         frame_timestamp: float,
         frame_id: int,
-        frame_shape: tuple[int, int, int],
+        frame_shape: tuple,
         detection_id: str | None = None,
     ) -> DetectionResult:
         """Create DetectionResult from YOLO model output.

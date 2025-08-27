@@ -45,6 +45,15 @@ class ModelSettings(BaseModel):
     max_detections: int = Field(
         default=100, ge=1, le=1000, description="Maximum detections per frame"
     )
+    candidate_storage_limit_gb: float = Field(
+        default=10.0,
+        gt=0,
+        le=1000.0,
+        description="Maximum storage limit for candidate images in GB",
+    )
+    candidate_cleanup_interval: int = Field(
+        default=1000, gt=0, le=10000, description="Cleanup check interval (every N saves)"
+    )
 
 
 class DatabaseSettings(BaseModel):
