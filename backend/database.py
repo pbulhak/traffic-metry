@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -270,8 +270,8 @@ class EventDatabase:
         try:
             conn.execute(
                 """
-                INSERT INTO vehicle_events 
-                (event_id, timestamp, vehicle_id, vehicle_type, direction, 
+                INSERT INTO vehicle_events
+                (event_id, timestamp, vehicle_id, vehicle_type, direction,
                  lane, x1, y1, x2, y2, confidence)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -311,9 +311,7 @@ class EventDatabase:
             formatted_events = []
             for row in events:
                 # Convert Unix timestamp back to ISO format string
-                timestamp_iso = datetime.fromtimestamp(
-                    row["timestamp"], tz=timezone.utc
-                ).isoformat()
+                timestamp_iso = datetime.fromtimestamp(row["timestamp"], tz=UTC).isoformat()
 
                 event = {
                     "eventId": row["event_id"],
@@ -358,8 +356,8 @@ class EventDatabase:
             """
             SELECT event_id, timestamp, vehicle_id, vehicle_type, direction,
                    lane, x1, y1, x2, y2, confidence, created_at
-            FROM vehicle_events 
-            ORDER BY created_at DESC 
+            FROM vehicle_events
+            ORDER BY created_at DESC
             LIMIT ?
         """,
             (limit,),
@@ -385,7 +383,7 @@ class EventDatabase:
 
             # Get oldest and newest timestamps
             cursor.execute("""
-                SELECT MIN(created_at) as oldest, MAX(created_at) as newest 
+                SELECT MIN(created_at) as oldest, MAX(created_at) as newest
                 FROM vehicle_events
             """)
             time_range = cursor.fetchone()
@@ -394,9 +392,9 @@ class EventDatabase:
             oldest_event = None
             newest_event = None
             if time_range[0]:
-                oldest_event = datetime.fromtimestamp(time_range[0], tz=timezone.utc).isoformat()
+                oldest_event = datetime.fromtimestamp(time_range[0], tz=UTC).isoformat()
             if time_range[1]:
-                newest_event = datetime.fromtimestamp(time_range[1], tz=timezone.utc).isoformat()
+                newest_event = datetime.fromtimestamp(time_range[1], tz=UTC).isoformat()
 
             # Get database file size
             db_size = self.db_path.stat().st_size if self.db_path.exists() else 0

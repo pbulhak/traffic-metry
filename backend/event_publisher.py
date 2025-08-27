@@ -7,11 +7,10 @@ and broadcasting vehicle detection events to connected frontend clients.
 from __future__ import annotations
 
 import asyncio
-import json
+import contextlib
 import logging
-import time
-from datetime import datetime, timezone
-from typing import Any, Set
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -30,11 +29,9 @@ class ConnectionManager:
         Args:
             max_connections: Maximum number of concurrent WebSocket connections
         """
-        self.active_connections: Set[WebSocket] = set()
+        self.active_connections: set[WebSocket] = set()
         self.max_connections = max_connections
         self.connection_count = 0
-        self.total_messages_sent = 0
-        self.failed_sends = 0
 
     async def connect(self, websocket: WebSocket) -> bool:
         """Accept a new WebSocket connection.
@@ -57,19 +54,6 @@ class ConnectionManager:
             logger.info(
                 f"WebSocket client connected. "
                 f"Active: {len(self.active_connections)}, Total: {self.connection_count}"
-            )
-
-            # Send welcome message
-            await self._send_to_connection(
-                websocket,
-                {
-                    "type": "status",
-                    "data": {
-                        "message": "Connected to TrafficMetry",
-                        "connection_id": id(websocket),
-                        "server_time": datetime.now(timezone.utc).isoformat(),
-                    },
-                },
             )
 
             return True
@@ -104,7 +88,7 @@ class ConnectionManager:
         message = {
             "type": "event",
             "data": event_data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         successful_sends = 0
@@ -114,7 +98,6 @@ class ConnectionManager:
             try:
                 await self._send_to_connection(connection, message)
                 successful_sends += 1
-                self.total_messages_sent += 1
 
             except WebSocketDisconnect:
                 logger.debug("Client disconnected during broadcast")
@@ -123,7 +106,6 @@ class ConnectionManager:
             except Exception as e:
                 logger.warning(f"Failed to send event to WebSocket client: {e}")
                 disconnected_connections.append(connection)
-                self.failed_sends += 1
 
         # Clean up disconnected connections
         for connection in disconnected_connections:
@@ -133,35 +115,6 @@ class ConnectionManager:
             logger.debug(
                 f"Event broadcasted to {successful_sends}/{len(self.active_connections) + len(disconnected_connections)} clients"
             )
-
-        return successful_sends
-
-    async def broadcast_status(self, status_data: dict[str, Any]) -> int:
-        """Broadcast system status to all connected clients.
-
-        Args:
-            status_data: System status information
-
-        Returns:
-            Number of successful broadcasts
-        """
-        if not self.active_connections:
-            return 0
-
-        message = {
-            "type": "status",
-            "data": status_data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-
-        successful_sends = 0
-        for connection in self.active_connections.copy():
-            try:
-                await self._send_to_connection(connection, message)
-                successful_sends += 1
-
-            except Exception as e:
-                logger.warning(f"Failed to send status to WebSocket client: {e}")
 
         return successful_sends
 
@@ -189,20 +142,6 @@ class ConnectionManager:
             logger.debug(f"WebSocket send failed: {e}")
             raise
 
-    def get_connection_stats(self) -> dict[str, Any]:
-        """Get connection statistics.
-
-        Returns:
-            Dictionary with connection statistics
-        """
-        return {
-            "active_connections": len(self.active_connections),
-            "max_connections": self.max_connections,
-            "total_connections": self.connection_count,
-            "total_messages_sent": self.total_messages_sent,
-            "failed_sends": self.failed_sends,
-        }
-
 
 class EventPublisher:
     """High-level event publisher for TrafficMetry WebSocket events."""
@@ -217,8 +156,6 @@ class EventPublisher:
         self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
         self.is_running = False
         self.publisher_task: asyncio.Task | None = None
-        self.events_processed = 0
-        self.start_time = time.time()
 
     async def start(self) -> None:
         """Start the event publisher background task."""
@@ -227,7 +164,6 @@ class EventPublisher:
             return
 
         self.is_running = True
-        self.start_time = time.time()
         self.publisher_task = asyncio.create_task(self._event_publisher_loop())
         logger.info("EventPublisher started")
 
@@ -240,12 +176,10 @@ class EventPublisher:
 
         if self.publisher_task:
             self.publisher_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.publisher_task
-            except asyncio.CancelledError:
-                pass
 
-        logger.info(f"EventPublisher stopped. Events processed: {self.events_processed}")
+        logger.info("EventPublisher stopped")
 
     async def publish_event(self, event_data: dict[str, Any]) -> bool:
         """Queue a vehicle event for broadcasting.
@@ -295,7 +229,6 @@ class EventPublisher:
 
                     # Broadcast to all connected clients
                     successful_sends = await self.connection_manager.broadcast_event(event_data)
-                    self.events_processed += 1
 
                     if successful_sends > 0:
                         logger.debug(f"Event {event_data.get('eventId', 'unknown')} broadcasted")
@@ -303,7 +236,7 @@ class EventPublisher:
                     # Mark task as done
                     self.event_queue.task_done()
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No events to process - continue loop
                     continue
 
@@ -317,24 +250,6 @@ class EventPublisher:
 
         except Exception as e:
             logger.error(f"Event publisher loop failed: {e}")
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get event publisher statistics.
-
-        Returns:
-            Dictionary with publisher statistics
-        """
-        connection_stats = self.connection_manager.get_connection_stats()
-        uptime = time.time() - self.start_time
-
-        return {
-            "is_running": self.is_running,
-            "uptime_seconds": uptime,
-            "events_processed": self.events_processed,
-            "queue_size": self.event_queue.qsize(),
-            "events_per_second": self.events_processed / uptime if uptime > 0 else 0,
-            **connection_stats,
-        }
 
 
 # Global event publisher instance

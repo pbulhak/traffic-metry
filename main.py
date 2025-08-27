@@ -25,8 +25,8 @@ import cv2
 from numpy.typing import NDArray
 
 from backend.camera_stream import CameraConnectionError, CameraStream
-from backend.config import Settings, ModelSettings, get_config
-from backend.database import EventDatabase, DatabaseError
+from backend.config import ModelSettings, Settings, get_config
+from backend.database import DatabaseError, EventDatabase
 from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
 
