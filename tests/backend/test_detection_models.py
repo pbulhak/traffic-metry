@@ -6,7 +6,7 @@ factory methods used in the TrafficMetry detection pipeline.
 """
 
 import uuid
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -70,7 +70,7 @@ class TestDetectionResult:
     """Test suite for DetectionResult dataclass."""
 
     @pytest.fixture
-    def valid_detection_data(self) -> Dict[str, Any]:
+    def valid_detection_data(self) -> dict[str, Any]:
         """Provide valid detection result data for testing."""
         return {
             "x1": 100,
@@ -86,7 +86,7 @@ class TestDetectionResult:
             "frame_shape": (1080, 1920, 3),
         }
 
-    def test_detection_result_creation_valid(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_detection_result_creation_valid(self, valid_detection_data: dict[str, Any]) -> None:
         """Test creating DetectionResult with valid data."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -101,7 +101,7 @@ class TestDetectionResult:
         assert detection.frame_id == 42
         assert detection.frame_shape == (1080, 1920, 3)
 
-    def test_detection_result_immutable(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_detection_result_immutable(self, valid_detection_data: dict[str, Any]) -> None:
         """Test that DetectionResult is immutable (frozen dataclass)."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -111,7 +111,9 @@ class TestDetectionResult:
         with pytest.raises(AttributeError):
             detection.confidence = 0.9  # type: ignore[misc]
 
-    def test_validation_invalid_bbox_x_coordinates(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_invalid_bbox_x_coordinates(
+        self, valid_detection_data: dict[str, Any]
+    ) -> None:
         """Test validation fails when x1 >= x2."""
         # x1 == x2
         valid_detection_data["x1"] = 300
@@ -127,7 +129,9 @@ class TestDetectionResult:
         with pytest.raises(ValueError, match="x1.*must be less than x2"):
             DetectionResult(**valid_detection_data)
 
-    def test_validation_invalid_bbox_y_coordinates(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_invalid_bbox_y_coordinates(
+        self, valid_detection_data: dict[str, Any]
+    ) -> None:
         """Test validation fails when y1 >= y2."""
         # y1 == y2
         valid_detection_data["y1"] = 400
@@ -143,7 +147,9 @@ class TestDetectionResult:
         with pytest.raises(ValueError, match="y1.*must be less than y2"):
             DetectionResult(**valid_detection_data)
 
-    def test_validation_invalid_confidence_range(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_invalid_confidence_range(
+        self, valid_detection_data: dict[str, Any]
+    ) -> None:
         """Test validation fails for confidence outside 0.0-1.0 range."""
         # Confidence too low
         valid_detection_data["confidence"] = -0.1
@@ -157,7 +163,7 @@ class TestDetectionResult:
         with pytest.raises(ValueError, match="Confidence must be between 0.0 and 1.0"):
             DetectionResult(**valid_detection_data)
 
-    def test_validation_negative_coordinates(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_negative_coordinates(self, valid_detection_data: dict[str, Any]) -> None:
         """Test validation fails for negative bounding box coordinates."""
         # Negative x1
         valid_detection_data["x1"] = -10
@@ -172,7 +178,9 @@ class TestDetectionResult:
         with pytest.raises(ValueError, match="coordinates cannot be negative"):
             DetectionResult(**valid_detection_data)
 
-    def test_validation_bbox_exceeds_frame_boundaries(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_bbox_exceeds_frame_boundaries(
+        self, valid_detection_data: dict[str, Any]
+    ) -> None:
         """Test validation fails when bbox extends beyond frame boundaries."""
         frame_height, frame_width, _ = valid_detection_data["frame_shape"]
 
@@ -189,7 +197,7 @@ class TestDetectionResult:
         with pytest.raises(ValueError, match="extends beyond frame boundaries"):
             DetectionResult(**valid_detection_data)
 
-    def test_validation_edge_case_boundaries(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_validation_edge_case_boundaries(self, valid_detection_data: dict[str, Any]) -> None:
         """Test validation for edge cases at frame boundaries."""
         frame_height, frame_width, _ = valid_detection_data["frame_shape"]
 
@@ -202,7 +210,7 @@ class TestDetectionResult:
         assert detection.x2 == frame_width
         assert detection.y2 == frame_height
 
-    def test_centroid_property(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_centroid_property(self, valid_detection_data: dict[str, Any]) -> None:
         """Test centroid calculation property."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -213,7 +221,7 @@ class TestDetectionResult:
         assert isinstance(detection.centroid[0], int)
         assert isinstance(detection.centroid[1], int)
 
-    def test_bbox_area_pixels_property(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_bbox_area_pixels_property(self, valid_detection_data: dict[str, Any]) -> None:
         """Test bounding box area calculation property."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -222,7 +230,7 @@ class TestDetectionResult:
         assert detection.bbox_area_pixels == expected_area
         assert isinstance(detection.bbox_area_pixels, int)
 
-    def test_bbox_width_property(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_bbox_width_property(self, valid_detection_data: dict[str, Any]) -> None:
         """Test bounding box width calculation property."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -231,7 +239,7 @@ class TestDetectionResult:
         assert detection.bbox_width == expected_width
         assert isinstance(detection.bbox_width, int)
 
-    def test_bbox_height_property(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_bbox_height_property(self, valid_detection_data: dict[str, Any]) -> None:
         """Test bounding box height calculation property."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -240,7 +248,7 @@ class TestDetectionResult:
         assert detection.bbox_height == expected_height
         assert isinstance(detection.bbox_height, int)
 
-    def test_aspect_ratio_property(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_aspect_ratio_property(self, valid_detection_data: dict[str, Any]) -> None:
         """Test aspect ratio calculation property."""
         detection = DetectionResult(**valid_detection_data)
 
@@ -249,7 +257,7 @@ class TestDetectionResult:
         assert detection.aspect_ratio == expected_ratio
         assert isinstance(detection.aspect_ratio, float)
 
-    def test_aspect_ratio_wide_bbox(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_aspect_ratio_wide_bbox(self, valid_detection_data: dict[str, Any]) -> None:
         """Test aspect ratio for wide bounding box."""
         valid_detection_data["x2"] = 500  # Width: 400, Height: 200
 
@@ -259,7 +267,7 @@ class TestDetectionResult:
 
         assert detection.aspect_ratio == expected_ratio
 
-    def test_aspect_ratio_tall_bbox(self, valid_detection_data: Dict[str, Any]) -> None:
+    def test_aspect_ratio_tall_bbox(self, valid_detection_data: dict[str, Any]) -> None:
         """Test aspect ratio for tall bounding box."""
         valid_detection_data["y2"] = 600  # Width: 200, Height: 400
 

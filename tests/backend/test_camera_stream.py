@@ -246,8 +246,8 @@ class TestCameraStream:
         mock_video_capture.return_value = mock_capture_instance
 
         with pytest.raises(ValueError), CameraStream(self.camera_settings) as camera:
-                camera.connect()
-                raise ValueError("Test exception")
+            camera.connect()
+            raise ValueError("Test exception")
 
         # Resources should still be cleaned up
         mock_capture_instance.release.assert_called_once()

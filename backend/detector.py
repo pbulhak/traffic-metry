@@ -125,19 +125,20 @@ class VehicleDetector:
             model_path = Path(self.model_settings.path)
             if not model_path.exists():
                 raise ModelLoadError(
-                    f"Model file not found: {model_path}",
-                    model_path=str(model_path)
+                    f"Model file not found: {model_path}", model_path=str(model_path)
                 )
 
             # Load model
             self._model = YOLO(str(model_path))
 
             # Configure model device
-            if hasattr(self._model, 'to'):
+            if hasattr(self._model, "to"):
                 self._model.to(self.model_settings.device)
 
             load_time = time.time() - start_time
-            logger.info(f"YOLO model loaded successfully in {load_time:.2f}s on device: {self.model_settings.device}")
+            logger.info(
+                f"YOLO model loaded successfully in {load_time:.2f}s on device: {self.model_settings.device}"
+            )
 
             # Perform warmup inference if possible
             self._warmup_model()
@@ -146,15 +147,13 @@ class VehicleDetector:
 
         except ImportError as e:
             raise ModelLoadError(
-                f"Failed to import ultralytics YOLO: {e}. "
-                "Install with: pip install ultralytics",
-                model_path=str(self.model_settings.path)
+                f"Failed to import ultralytics YOLO: {e}. Install with: pip install ultralytics",
+                model_path=str(self.model_settings.path),
             ) from e
 
         except Exception as e:
             raise ModelLoadError(
-                f"Failed to load YOLO model: {e}",
-                model_path=str(self.model_settings.path)
+                f"Failed to load YOLO model: {e}", model_path=str(self.model_settings.path)
             ) from e
 
     def _warmup_model(self) -> None:
@@ -172,7 +171,7 @@ class VehicleDetector:
             dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
 
             # Perform warmup inference
-            if hasattr(self._model, '__call__'):
+            if callable(self._model):
                 _ = self._model(dummy_frame, verbose=False)
 
             logger.debug("Model warmup completed successfully")
@@ -217,27 +216,28 @@ class VehicleDetector:
                 raise DetectionError("Model failed to load", frame_shape=frame.shape)
 
             # Perform inference
-            logger.debug(f"Running inference on frame {self._frame_counter} with shape {frame.shape}")
+            logger.debug(
+                f"Running inference on frame {self._frame_counter} with shape {frame.shape}"
+            )
 
-            if hasattr(self._model, '__call__'):
+            if callable(self._model):
                 results = self._model(
                     frame,
                     conf=self.model_settings.confidence_threshold,
                     verbose=False,
-                    device=self.model_settings.device
+                    device=self.model_settings.device,
                 )
             else:
                 raise DetectionError("Model is not callable", frame_shape=frame.shape)
 
             # Extract and filter detections
             detections = self._extract_vehicle_detections(
-                results,
-                frame.shape,
-                frame_timestamp,
-                self._frame_counter
+                results, frame.shape, frame_timestamp, self._frame_counter
             )
 
-            logger.debug(f"Found {len(detections)} vehicle detections in frame {self._frame_counter}")
+            logger.debug(
+                f"Found {len(detections)} vehicle detections in frame {self._frame_counter}"
+            )
 
             return detections
 
@@ -247,8 +247,7 @@ class VehicleDetector:
 
         except Exception as e:
             raise DetectionError(
-                f"Detection failed for frame {self._frame_counter}: {e}",
-                frame_shape=frame.shape
+                f"Detection failed for frame {self._frame_counter}: {e}", frame_shape=frame.shape
             ) from e
 
     def _validate_frame(self, frame: NDArray) -> None:
@@ -302,19 +301,25 @@ class VehicleDetector:
 
         try:
             # Handle YOLO results format (ultralytics)
-            if hasattr(yolo_results, '__iter__'):
+            if hasattr(yolo_results, "__iter__"):
                 for result in yolo_results:
-                    if hasattr(result, 'boxes') and result.boxes is not None:
+                    if hasattr(result, "boxes") and result.boxes is not None:
                         boxes = result.boxes
 
                         # Extract box data
-                        if hasattr(boxes, 'xyxy') and hasattr(boxes, 'conf') and hasattr(boxes, 'cls'):
+                        if (
+                            hasattr(boxes, "xyxy")
+                            and hasattr(boxes, "conf")
+                            and hasattr(boxes, "cls")
+                        ):
                             coords = boxes.xyxy.cpu().numpy()  # (N, 4) - x1, y1, x2, y2
                             confidences = boxes.conf.cpu().numpy()  # (N,)
                             class_ids = boxes.cls.cpu().numpy().astype(int)  # (N,)
 
                             # Process each detection
-                            for coord, confidence, class_id in zip(coords, confidences, class_ids, strict=False):
+                            for coord, confidence, class_id in zip(
+                                coords, confidences, class_ids, strict=False
+                            ):
                                 # Filter for vehicle classes only
                                 if class_id not in self.VEHICLE_CLASS_IDS:
                                     continue
@@ -366,9 +371,9 @@ class VehicleDetector:
         if self._model_loaded and self._model is not None:
             try:
                 # Try to get additional model info if available
-                if hasattr(self._model, 'model'):
+                if hasattr(self._model, "model"):
                     info["model_type"] = str(type(self._model.model).__name__)
-                if hasattr(self._model, 'names'):
+                if hasattr(self._model, "names"):
                     info["class_names"] = self._model.names
             except Exception:
                 # Ignore errors getting additional info

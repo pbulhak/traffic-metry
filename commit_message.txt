@@ -1,0 +1,9 @@
+feat(main): implement core TrafficMetry application orchestrator
+
+- Add main.py with TrafficMetryProcessor as central coordinator
+- Implement LaneAnalyzer for vehicle lane assignment based on calibration
+- Create EventGenerator for API v2.3 compatible vehicle events  
+- Add CandidateSaver for training data collection
+- Integrate asyncio processing loop with signal handling
+- Fix lane boundary calculation and assignment logic
+- Add comprehensive error handling and performance monitoring
