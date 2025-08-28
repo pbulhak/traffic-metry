@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">
+  <!-- Car body -->
+  <rect x="20" y="45" width="140" height="30" rx="5" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+  
+  <!-- Car roof -->
+  <path d="M 45 45 L 45 25 Q 45 20 50 20 L 130 20 Q 135 20 135 25 L 135 45" fill="#2980b9" stroke="#1f5f8b" stroke-width="2"/>
+  
+  <!-- Windows -->
+  <rect x="50" y="25" width="35" height="18" rx="2" fill="#87ceeb" stroke="#5f9ea0" stroke-width="1"/>
+  <rect x="95" y="25" width="35" height="18" rx="2" fill="#87ceeb" stroke="#5f9ea0" stroke-width="1"/>
+  
+  <!-- Front bumper -->
+  <rect x="160" y="50" width="15" height="20" rx="3" fill="#2980b9"/>
+  
+  <!-- Headlight -->
+  <ellipse cx="170" cy="55" rx="6" ry="4" fill="#fff9c4" stroke="#f1c40f" stroke-width="1"/>
+  
+  <!-- Wheels -->
+  <circle cx="50" cy="75" r="15" fill="#2c3e50" stroke="#1a252f" stroke-width="2"/>
+  <circle cx="130" cy="75" r="15" fill="#2c3e50" stroke="#1a252f" stroke-width="2"/>
+  
+  <!-- Wheel rims -->
+  <circle cx="50" cy="75" r="8" fill="#95a5a6"/>
+  <circle cx="130" cy="75" r="8" fill="#95a5a6"/>
+  
+  <!-- Door line -->
+  <line x1="90" y1="45" x2="90" y2="75" stroke="#2980b9" stroke-width="1"/>
+</svg>

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 120" width="250" height="120">
+  <!-- Tank hull -->
+  <rect x="30" y="50" width="160" height="35" rx="8" fill="#7f8c8d" stroke="#5d6d7e" stroke-width="2"/>
+  
+  <!-- Tank turret -->
+  <ellipse cx="120" cy="50" rx="35" ry="20" fill="#95a5a6" stroke="#7f8c8d" stroke-width="2"/>
+  
+  <!-- Main gun barrel -->
+  <rect x="155" y="47" width="60" height="6" rx="3" fill="#5d6d7e" stroke="#34495e" stroke-width="1"/>
+  <rect x="210" y="46" width="8" height="8" rx="2" fill="#34495e"/> <!-- Muzzle brake -->
+  
+  <!-- Tank tracks -->
+  <ellipse cx="110" cy="85" rx="80" ry="12" fill="#2c3e50" stroke="#1a252f" stroke-width="2"/>
+  
+  <!-- Road wheels -->
+  <circle cx="60" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="80" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="100" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="120" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="140" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="160" cy="85" r="8" fill="#34495e" stroke="#2c3e50" stroke-width="1"/>
+  
+  <!-- Drive sprocket and idler wheel -->
+  <circle cx="40" cy="85" r="10" fill="#34495e" stroke="#2c3e50" stroke-width="2"/>
+  <circle cx="180" cy="85" r="10" fill="#34495e" stroke="#2c3e50" stroke-width="2"/>
+  
+  <!-- Track pattern -->
+  <g stroke="#1a252f" stroke-width="1" fill="none">
+    <path d="M 40 73 Q 110 73 180 73"/>
+    <path d="M 40 97 Q 110 97 180 97"/>
+  </g>
+  
+  <!-- Hull details -->
+  <rect x="45" y="55" width="12" height="8" rx="2" fill="#34495e"/> <!-- Vision block -->
+  <rect x="170" y="55" width="15" height="6" rx="1" fill="#e74c3c"/> <!-- Rear light -->
+  
+  <!-- Turret details -->
+  <rect x="105" y="40" width="8" height="6" rx="1" fill="#2c3e50"/> <!-- Commander's hatch -->
+  <circle cx="130" cy="45" r="3" fill="#34495e"/> <!-- Turret vision device -->
+  
+  <!-- Antenna -->
+  <line x1="85" y1="35" x2="85" y2="15" stroke="#2c3e50" stroke-width="2"/>
+  <circle cx="85" cy="15" r="2" fill="#e74c3c"/>
+  
+  <!-- Side armor plates -->
+  <rect x="35" y="65" width="8" height="15" rx="2" fill="#95a5a6"/>
+  <rect x="177" y="65" width="8" height="15" rx="2" fill="#95a5a6"/>
+  
+  <!-- Exhaust -->
+  <rect x="25" y="60" width="6" height="8" rx="2" fill="#34495e"/>
+  
+  <!-- Track tension wheels -->
+  <circle cx="50" cy="75" r="4" fill="#5d6d7e"/>
+  <circle cx="170" cy="75" r="4" fill="#5d6d7e"/>
+</svg>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrafficMetry - Real-time Vehicle Monitoring</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- HEADER: Logo + Connection Status -->
+    <header class="app-header">
+        <h1>TrafficMetry</h1>
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span class="status-text" id="statusText">Connecting...</span>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="app-main">
+        <!-- Traffic Visualization Section -->
+        <section class="events-section">
+            <h2>Live Vehicle Traffic</h2>
+            <div class="traffic-visualization" id="trafficVisualization">
+                <!-- Vehicle sprites will be dynamically added here -->
+            </div>
+            
+            <h3>Event Log</h3>
+            <div class="events-container" id="eventsContainer">
+                <div class="placeholder-message" id="placeholderMessage">
+                    <p>Waiting for vehicle events...</p>
+                    <p class="small-text">Make sure the TrafficMetry backend is running</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Summary -->
+        <aside class="stats-panel">
+            <div class="stat-item">
+                <span class="stat-label">Events Today:</span>
+                <span class="stat-value" id="eventsCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Connection:</span>
+                <span class="stat-value" id="connectionTime">--:--</span>
+            </div>
+        </aside>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="app-footer">
+        <p>&copy; 2025 TrafficMetry - Real-time Traffic Monitoring</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/websocket_client.js"></script>
+    <script src="js/vehicle_renderer.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

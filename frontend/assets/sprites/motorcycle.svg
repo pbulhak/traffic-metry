@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120">
+  <!-- Main body/fuel tank -->
+  <ellipse cx="100" cy="50" rx="35" ry="15" fill="#e74c3c" stroke="#c0392b" stroke-width="2"/>
+  
+  <!-- Seat -->
+  <ellipse cx="70" cy="45" rx="20" ry="8" fill="#2c3e50" stroke="#1a252f" stroke-width="1"/>
+  
+  <!-- Engine -->
+  <rect x="85" y="55" width="30" height="20" rx="3" fill="#7f8c8d" stroke="#5d6d7e" stroke-width="2"/>
+  
+  <!-- Front fork -->
+  <line x1="130" y1="50" x2="150" y2="25" stroke="#5d6d7e" stroke-width="4"/>
+  <line x1="128" y1="52" x2="148" y2="27" stroke="#5d6d7e" stroke-width="4"/>
+  
+  <!-- Handlebars -->
+  <line x1="140" y1="25" x2="160" y2="25" stroke="#2c3e50" stroke-width="3"/>
+  <circle cx="145" cy="25" r="2" fill="#f39c12"/>
+  <circle cx="155" cy="25" r="2" fill="#e74c3c"/>
+  
+  <!-- Rear frame -->
+  <line x1="50" y1="50" x2="40" y2="80" stroke="#5d6d7e" stroke-width="4"/>
+  <line x1="70" y1="55" x2="40" y2="80" stroke="#5d6d7e" stroke-width="3"/>
+  
+  <!-- Front frame -->
+  <line x1="115" y1="60" x2="150" y2="80" stroke="#5d6d7e" stroke-width="4"/>
+  
+  <!-- Exhaust pipe -->
+  <path d="M 115 65 Q 135 70 145 75 Q 155 80 165 75" fill="none" stroke="#34495e" stroke-width="6"/>
+  <ellipse cx="165" cy="75" rx="8" ry="4" fill="#2c3e50" stroke="#1a252f" stroke-width="1"/>
+  
+  <!-- Headlight -->
+  <circle cx="155" cy="35" r="8" fill="#fff9c4" stroke="#f1c40f" stroke-width="2"/>
+  <circle cx="155" cy="35" r="5" fill="#f9e79f"/>
+  
+  <!-- Front wheel -->
+  <circle cx="150" cy="80" r="20" fill="#2c3e50" stroke="#1a252f" stroke-width="3"/>
+  <circle cx="150" cy="80" r="12" fill="#5d6d7e"/>
+  <circle cx="150" cy="80" r="6" fill="#95a5a6"/>
+  
+  <!-- Rear wheel -->
+  <circle cx="40" cy="80" r="20" fill="#2c3e50" stroke="#1a252f" stroke-width="3"/>
+  <circle cx="40" cy="80" r="12" fill="#5d6d7e"/>
+  <circle cx="40" cy="80" r="6" fill="#95a5a6"/>
+  
+  <!-- Spokes -->
+  <g stroke="#bdc3c7" stroke-width="1">
+    <!-- Front wheel spokes -->
+    <line x1="135" y1="65" x2="165" y2="95"/>
+    <line x1="165" y1="65" x2="135" y2="95"/>
+    <line x1="150" y1="60" x2="150" y2="100"/>
+    <line x1="130" y1="80" x2="170" y2="80"/>
+    
+    <!-- Rear wheel spokes -->
+    <line x1="25" y1="65" x2="55" y2="95"/>
+    <line x1="55" y1="65" x2="25" y2="95"/>
+    <line x1="40" y1="60" x2="40" y2="100"/>
+    <line x1="20" y1="80" x2="60" y2="80"/>
+  </g>
+  
+  <!-- Motorcyclist -->
+  <!-- Head with helmet -->
+  <ellipse cx="75" cy="30" rx="8" ry="10" fill="#2c3e50" stroke="#1a252f" stroke-width="1"/>
+  <ellipse cx="75" cy="28" rx="6" ry="8" fill="#34495e"/> <!-- Helmet visor -->
+  
+  <!-- Body/torso -->
+  <ellipse cx="70" cy="42" rx="6" ry="12" fill="#3498db" stroke="#2980b9" stroke-width="1"/>
+  
+  <!-- Arms -->
+  <ellipse cx="78" cy="38" rx="3" ry="8" fill="#3498db" transform="rotate(20 78 38)"/>
+  <ellipse cx="85" cy="32" rx="2" ry="6" fill="#d5a574" transform="rotate(30 85 32)"/> <!-- Right hand -->
+  
+  <!-- Left arm reaching forward -->
+  <ellipse cx="82" cy="35" rx="3" ry="8" fill="#3498db" transform="rotate(-10 82 35)"/>
+  <ellipse cx="90" cy="30" rx="2" ry="6" fill="#d5a574" transform="rotate(-20 90 30)"/> <!-- Left hand -->
+  
+  <!-- Legs -->
+  <ellipse cx="65" cy="55" rx="4" ry="10" fill="#2c3e50" transform="rotate(-15 65 55)"/> <!-- Left leg -->
+  <ellipse cx="75" cy="58" rx="4" ry="10" fill="#2c3e50" transform="rotate(10 75 58)"/> <!-- Right leg -->
+  
+  <!-- Foot pegs -->
+  <rect x="88" y="72" width="8" height="3" rx="1" fill="#5d6d7e"/>
+  <rect x="60" y="75" width="8" height="3" rx="1" fill="#5d6d7e"/>
+</svg>
