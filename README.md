@@ -53,3 +53,11 @@
       * **Key tasks:**
           - Add color detection in backend
           - Implement HTML Canvas rendering
+
+## License
+
+This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](LICENSE).
+
+[![CC BY-NC-SA 4.0](https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png)](http://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+This means you can share and adapt this work for non-commercial purposes, provided you give appropriate credit and distribute any derivative works under the same license.
