@@ -3,7 +3,7 @@ name = "trafficmetry"
 version = "0.1.0"
 description = "A system for monitoring and analyzing local street traffic using AI"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "CC BY-NC-SA 4.0"}
 authors = [
     {name = "Piotr Bułhak"}
 ]
