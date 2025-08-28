@@ -20,6 +20,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import cv2
 from numpy.typing import NDArray
