@@ -19,14 +19,15 @@ import signal
 import sys
 import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cv2
 from numpy.typing import NDArray
 
 from backend.camera_stream import CameraConnectionError, CameraStream
-from backend.config import Settings, ModelSettings, get_config
-from backend.database import EventDatabase, DatabaseError
+from backend.config import ModelSettings, Settings, get_config
+from backend.database import DatabaseError, EventDatabase
 from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
 
@@ -153,7 +154,9 @@ class EventGenerator:
 
         event = {
             "eventId": str(uuid.uuid4()),
-            "timestamp": detection.frame_timestamp,
+            "timestamp": datetime.fromtimestamp(detection.frame_timestamp, tz=UTC)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "vehicleId": vehicle_id,
             "vehicleType": detection.vehicle_type.value,
             "movement": {
