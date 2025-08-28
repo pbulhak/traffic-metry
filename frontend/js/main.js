@@ -1,7 +1,6 @@
 /**
  * TrafficMetry Main Application
- * Step 3: WebSocket connection and console logging only
- * Visualization will be implemented in Step 4
+ * Step 4: WebSocket connection with SVG sprite visualization
  */
 
 class TrafficMetryApp {
@@ -9,6 +8,9 @@ class TrafficMetryApp {
         // WebSocket client
         this.wsClient = null;
         this.wsUrl = 'ws://localhost:8000/ws';
+        
+        // Vehicle visualization renderer
+        this.vehicleRenderer = null;
         
         // DOM elements
         this.connectionStatus = null;
@@ -49,6 +51,9 @@ class TrafficMetryApp {
         // Get DOM elements
         this._initializeDOMElements();
         
+        // Initialize vehicle renderer
+        this._initializeVehicleRenderer();
+        
         // Setup WebSocket client
         this._initializeWebSocket();
         
@@ -83,6 +88,21 @@ class TrafficMetryApp {
             if (!element) {
                 console.error(`Required DOM element not found: ${name}`);
             }
+        }
+    }
+    
+    /**
+     * Initialize vehicle visualization renderer
+     */
+    _initializeVehicleRenderer() {
+        console.log('Initializing VehicleRenderer...');
+        
+        try {
+            this.vehicleRenderer = new VehicleRenderer('#trafficVisualization');
+            console.log('VehicleRenderer initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize VehicleRenderer:', error);
+            this.vehicleRenderer = null;
         }
     }
     
@@ -129,13 +149,16 @@ class TrafficMetryApp {
             if (this.wsClient) {
                 this.wsClient.disconnect();
             }
+            if (this.vehicleRenderer) {
+                this.vehicleRenderer.clearAll();
+            }
             this._clearConnectionTimer();
         });
     }
     
     /**
      * Handle incoming vehicle events
-     * Step 3: Only console logging, no visualization yet
+     * Step 4: Console logging + SVG sprite visualization
      */
     handleVehicleEvent(eventData) {
         const {
@@ -148,6 +171,7 @@ class TrafficMetryApp {
             position = { boundingBox: {} }
         } = eventData;
 
+        // Console logging (preserved from Step 3)
         console.group(`🚗 Vehicle Event Received: ${vehicleType}`);
         console.log('Event ID:', eventId);
         console.log('Timestamp:', timestamp);
@@ -158,6 +182,17 @@ class TrafficMetryApp {
         console.log('Full Event Data:', eventData);
         console.groupEnd();
 
+        // Vehicle visualization (NEW in Step 4)
+        if (this.vehicleRenderer) {
+            try {
+                this.vehicleRenderer.createVehicle(eventData);
+                console.log('Vehicle sprite created for visualization');
+            } catch (error) {
+                console.error('Error creating vehicle visualization:', error);
+            }
+        }
+
+        // Update counters and UI
         this.eventsReceived++;
         this._updateEventsCounter();
 

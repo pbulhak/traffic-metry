@@ -18,9 +18,14 @@
 
     <!-- MAIN CONTENT -->
     <main class="app-main">
-        <!-- Events Section -->
+        <!-- Traffic Visualization Section -->
         <section class="events-section">
-            <h2>Live Vehicle Events</h2>
+            <h2>Live Vehicle Traffic</h2>
+            <div class="traffic-visualization" id="trafficVisualization">
+                <!-- Vehicle sprites will be dynamically added here -->
+            </div>
+            
+            <h3>Event Log</h3>
             <div class="events-container" id="eventsContainer">
                 <div class="placeholder-message" id="placeholderMessage">
                     <p>Waiting for vehicle events...</p>
@@ -49,6 +54,7 @@
 
     <!-- Scripts -->
     <script src="js/websocket_client.js"></script>
+    <script src="js/vehicle_renderer.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
