@@ -32,6 +32,7 @@ class ConnectionManager:
         self.active_connections: set[WebSocket] = set()
         self.max_connections = max_connections
         self.connection_count = 0
+        self._connection_lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> bool:
         """Accept a new WebSocket connection.
@@ -42,25 +43,28 @@ class ConnectionManager:
         Returns:
             True if connection accepted, False if rejected (too many connections)
         """
-        if len(self.active_connections) >= self.max_connections:
-            logger.warning(f"Connection rejected: max connections ({self.max_connections}) reached")
-            return False
+        async with self._connection_lock:
+            if len(self.active_connections) >= self.max_connections:
+                logger.warning(
+                    f"Connection rejected: max connections ({self.max_connections}) reached"
+                )
+                return False
 
-        try:
-            await websocket.accept()
-            self.active_connections.add(websocket)
-            self.connection_count += 1
+            try:
+                await websocket.accept()
+                self.active_connections.add(websocket)
+                self.connection_count += 1
 
-            logger.info(
-                f"WebSocket client connected. "
-                f"Active: {len(self.active_connections)}, Total: {self.connection_count}"
-            )
+                logger.info(
+                    f"WebSocket client connected. "
+                    f"Active: {len(self.active_connections)}, Total: {self.connection_count}"
+                )
 
-            return True
+                return True
 
-        except Exception as e:
-            logger.error(f"Failed to accept WebSocket connection: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"Failed to accept WebSocket connection: {e}")
+                return False
 
     def disconnect(self, websocket: WebSocket) -> None:
         """Remove a WebSocket connection.

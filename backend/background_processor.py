@@ -105,7 +105,7 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
         super().__init__(config)
         self.publishing_stats = {"events_published": 0, "publishing_errors": 0}
 
-    async def _process_detection(self, frame: Any, detection: Any) -> None:
+    async def _process_detection(self, frame: Any, detection: Any) -> dict[str, Any]:
         """Process detection with WebSocket event publishing.
 
         This method extends the parent _process_detection to also
@@ -116,19 +116,19 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
             detection: DetectionResult object
         """
         try:
-            # Call parent processing (saves to database, logs, saves candidate)
-            await super()._process_detection(frame, detection)
+            # Call parent processing and get the created event
+            event = await super()._process_detection(frame, detection)
 
-            # Get the event that was created (we need to recreate it for publishing)
-            # This is needed because parent method doesn't return the event
-            lane_number, direction = self.lane_analyzer.assign_lane(detection)
-            event = self.event_generator.create_vehicle_event(detection, lane_number, direction)
+            # Only publish if we got a valid event (not empty dict from error case)
+            if event:
+                # Publish to WebSocket clients
+                await self._publish_event(event)
 
-            # Publish to WebSocket clients
-            await self._publish_event(event)
+            return event
 
         except Exception as e:
             logger.error(f"Error in extended _process_detection: {e}")
+            return {}
 
     async def _publish_event(self, event: dict[str, Any]) -> None:
         """Publish event to WebSocket clients.

@@ -453,12 +453,17 @@ class TrafficMetryProcessor:
             logger.info("TrafficMetry processing stopped")
             self._log_final_statistics()
 
-    async def _process_detection(self, frame: NDArray, detection: DetectionResult) -> None:
+    async def _process_detection(
+        self, frame: NDArray, detection: DetectionResult
+    ) -> dict[str, Any]:
         """Process a single vehicle detection.
 
         Args:
             frame: Source video frame
             detection: Vehicle detection result
+
+        Returns:
+            Vehicle event dictionary in API v2.3 format
         """
         try:
             # Assign lane and direction
@@ -488,8 +493,12 @@ class TrafficMetryProcessor:
                     None, self.candidate_saver.save_candidate, frame, detection
                 )
 
+            return event
+
         except Exception as e:
             logger.error(f"Error processing detection {detection.detection_id}: {e}")
+            # Return empty dict on error to maintain return type consistency
+            return {}
 
     def _log_statistics(self, elapsed_time: float) -> None:
         """Log performance statistics.
