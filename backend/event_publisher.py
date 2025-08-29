@@ -89,18 +89,30 @@ class ConnectionManager:
             logger.debug("No active WebSocket connections for broadcasting")
             return 0
 
-        message = {
+        message: dict[str, Any] = {
             "type": "event",
             "data": event_data,
             "timestamp": datetime.now(UTC).isoformat(),
         }
+
+        # Optimize: Serialize JSON once for all clients instead of per-client
+        try:
+            ws_message = WebSocketMessage(
+                type=message["type"],
+                data=message["data"],
+                timestamp=message["timestamp"]
+            )
+            cached_json = ws_message.model_dump_json()
+        except Exception as e:
+            logger.error(f"Failed to serialize WebSocket message: {e}")
+            return 0
 
         successful_sends = 0
         disconnected_connections = []
 
         for connection in self.active_connections.copy():
             try:
-                await self._send_to_connection(connection, message)
+                await self._send_cached_message(connection, cached_json)
                 successful_sends += 1
 
             except WebSocketDisconnect:
@@ -121,6 +133,19 @@ class ConnectionManager:
             )
 
         return successful_sends
+
+    async def _send_cached_message(self, websocket: WebSocket, cached_json: str) -> None:
+        """Send pre-serialized JSON message to a specific WebSocket connection.
+
+        Args:
+            websocket: Target WebSocket connection
+            cached_json: Pre-serialized JSON message string
+
+        Raises:
+            WebSocketDisconnect: If connection is closed
+            Exception: If send fails
+        """
+        await websocket.send_text(cached_json)
 
     async def _send_to_connection(self, websocket: WebSocket, message: dict[str, Any]) -> None:
         """Send message to a specific WebSocket connection.

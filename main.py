@@ -501,8 +501,31 @@ class TrafficMetryProcessor:
 
         except Exception as e:
             logger.error(f"Error processing detection {detection.detection_id}: {e}")
-            # Return empty dict on error to maintain return type consistency
-            return {}
+
+            # Return properly structured error event compliant with API v2.3
+            return {
+                "eventId": str(uuid.uuid4()),
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "vehicleId": f"error-{detection.detection_id}",
+                "vehicleType": "other_vehicle",  # Safe fallback
+                "movement": {
+                    "direction": "stationary",
+                    "lane": -1  # Error indicator
+                },
+                "vehicleColor": {
+                    "hex": None,
+                    "name": None
+                },
+                "position": {
+                    "boundingBox": {
+                        "x1": 0, "y1": 0, "x2": 0, "y2": 0  # Empty bounding box
+                    }
+                },
+                "analytics": {
+                    "confidence": 0.0,  # Zero confidence indicates error
+                    "estimatedSpeedKph": None
+                }
+            }
 
     def _log_statistics(self, elapsed_time: float) -> None:
         """Log performance statistics.
