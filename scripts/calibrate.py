@@ -139,9 +139,15 @@ class LineManager:
             top_y = int((top_line.start[1] + top_line.end[1]) / 2)
             bottom_y = int((bottom_line.start[1] + bottom_line.end[1]) / 2)
 
-            # Lanes span full frame width
-            left_x = 0
-            right_x = frame_width
+            # Calculate lane X boundaries based on the actual line positions
+            # Use the leftmost and rightmost X coordinates from both lines
+            top_left_x = min(top_line.start[0], top_line.end[0])
+            top_right_x = max(top_line.start[0], top_line.end[0])
+            bottom_left_x = min(bottom_line.start[0], bottom_line.end[0])
+            bottom_right_x = max(bottom_line.start[0], bottom_line.end[0])
+            
+            left_x = min(top_left_x, bottom_left_x)
+            right_x = max(top_right_x, bottom_right_x)
 
             direction = self.lane_directions.get(i, "stationary")
             lanes[i] = Lane(i, left_x, right_x, top_y, bottom_y, direction)
@@ -410,9 +416,9 @@ class CalibrationUI:
             center = lane.get_center()
             direction_text = f"{lane.direction.upper()}"
             if lane.direction == "left":
-                direction_text += " ←"
+                direction_text += " <--"
             elif lane.direction == "right":
-                direction_text += " →"
+                direction_text += " -->"
 
             cv2.putText(
                 frame, direction_text, center, cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3
@@ -447,7 +453,7 @@ class CalibrationUI:
             instructions = [
                 "STEP 2: Assign Horizontal Lane Directions",
                 "Click in horizontal lane: Cycle direction (stationary→left→right)",
-                "Green=LEFT ←, Red=RIGHT →, Yellow=STATIONARY",
+                "Green=LEFT <--, Red=RIGHT -->, Yellow=STATIONARY",
                 "Traffic moves left/right within horizontal lanes",
                 "S: Save configuration and exit",
                 "R: Reset calibration | Q: Quit without saving",
@@ -522,22 +528,40 @@ class CalibrationUI:
         return errors
 
     def _lines_intersect(self, line1: Line, line2: Line) -> bool:
-        """Check if two lines intersect (simplified check)."""
-        # Simple bounding box intersection check
-        l1_min_x = min(line1.start[0], line1.end[0])
-        l1_max_x = max(line1.start[0], line1.end[0])
-        l1_min_y = min(line1.start[1], line1.end[1])
-        l1_max_y = max(line1.start[1], line1.end[1])
+        """Check if two lines intersect within the image bounds with tolerance for manual drawing."""
 
-        l2_min_x = min(line2.start[0], line2.end[0])
-        l2_max_x = max(line2.start[0], line2.end[0])
-        l2_min_y = min(line2.start[1], line2.end[1])
-        l2_max_y = max(line2.start[1], line2.end[1])
+        # Extract line coordinates
+        x1, y1 = line1.start
+        x2, y2 = line1.end
+        x3, y3 = line2.start
+        x4, y4 = line2.end
 
-        # Check if bounding boxes overlap
-        return not (
-            l1_max_x < l2_min_x or l2_max_x < l1_min_x or l1_max_y < l2_min_y or l2_max_y < l1_min_y
-        )
+        # Calculate line directions
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+
+        # Lines are parallel (or nearly parallel) - this is expected for lane dividers
+        if abs(denom) < 1e-6:
+            return False
+
+        # Calculate intersection point
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+        u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom
+
+        # Check if intersection occurs within both line segments
+        if 0 <= t <= 1 and 0 <= u <= 1:
+            # Calculate intersection coordinates
+            ix = x1 + t * (x2 - x1)
+            iy = y1 + t * (y2 - y1)
+
+            # Only report as intersection if it's within reasonable image bounds
+            # Allow some tolerance for lines that intersect just outside the frame
+            if self.reference_frame is not None:
+                margin = 50  # pixels tolerance outside image bounds
+                if (-margin <= ix <= self.reference_frame.shape[1] + margin and
+                    -margin <= iy <= self.reference_frame.shape[0] + margin):
+                    return True
+
+        return False
 
     def _save_configuration(self) -> bool:
         """Save calibration to config.ini file."""
