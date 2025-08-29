@@ -71,6 +71,13 @@ htmlcov/
 *.sublime-workspace
 
 
+# --- Logs & Configuration Files ---
+# Runtime logs
+*.log
+trafficmetry.log
+# Local configuration files (may contain sensitive data)
+config.ini
+
 # --- OS Generated Files ---
 # macOS
 .DS_Store
