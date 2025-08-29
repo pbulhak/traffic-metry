@@ -7,6 +7,7 @@ class VehicleRenderer {
     constructor(containerSelector = '.traffic-visualization') {
         this.container = document.querySelector(containerSelector);
         this.activeVehicles = new Map(); // vehicleId -> DOM element
+        this.vehicleCleanupData = new Map(); // vehicleId -> {listener, timeout}
         this.laneHeight = 60; // pixels per lane
         this.animationDuration = 3000; // 3 seconds
         this.maxVehicles = 20; // Performance limit
@@ -154,9 +155,15 @@ class VehicleRenderer {
         element.addEventListener('animationend', handleAnimationEnd);
         
         // Fallback cleanup after animation duration + buffer
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
             this._removeVehicle(vehicleId);
         }, this.animationDuration + 1000);
+        
+        // Store cleanup data for proper memory management
+        this.vehicleCleanupData.set(vehicleId, {
+            listener: handleAnimationEnd,
+            timeout: timeoutId
+        });
     }
     
     /**
@@ -164,10 +171,28 @@ class VehicleRenderer {
      */
     _removeVehicle(vehicleId) {
         const element = this.activeVehicles.get(vehicleId);
+        const cleanupData = this.vehicleCleanupData.get(vehicleId);
         
-        if (element && element.parentNode) {
-            element.parentNode.removeChild(element);
+        if (element) {
+            // Clean up event listeners to prevent memory leaks
+            if (cleanupData && cleanupData.listener) {
+                element.removeEventListener('animationend', cleanupData.listener);
+            }
+            
+            // Clear timeout to prevent orphaned timers
+            if (cleanupData && cleanupData.timeout) {
+                clearTimeout(cleanupData.timeout);
+            }
+            
+            // Remove from DOM
+            if (element.parentNode) {
+                element.parentNode.removeChild(element);
+            }
+            
+            // Clean up tracking data
             this.activeVehicles.delete(vehicleId);
+            this.vehicleCleanupData.delete(vehicleId);
+            
             console.log('Vehicle removed:', vehicleId);
         }
     }
@@ -184,11 +209,26 @@ class VehicleRenderer {
      */
     clearAll() {
         this.activeVehicles.forEach((element, vehicleId) => {
+            const cleanupData = this.vehicleCleanupData.get(vehicleId);
+            
+            // Clean up event listeners
+            if (cleanupData && cleanupData.listener) {
+                element.removeEventListener('animationend', cleanupData.listener);
+            }
+            
+            // Clear timeouts
+            if (cleanupData && cleanupData.timeout) {
+                clearTimeout(cleanupData.timeout);
+            }
+            
+            // Remove from DOM
             if (element.parentNode) {
                 element.parentNode.removeChild(element);
             }
         });
+        
         this.activeVehicles.clear();
+        this.vehicleCleanupData.clear();
         console.log('All vehicles cleared');
     }
 }
