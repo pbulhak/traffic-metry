@@ -15,10 +15,10 @@ from backend.detection_models import DetectionResult, VehicleType
 
 @dataclass(frozen=True)
 class VehicleJourney:
-    """Complete vehicle journey data for final database storage.
-    
-    Represents the full lifecycle of a vehicle from entry to exit with
-    comprehensive analytics and movement tracking.
+    """Essential vehicle journey data for database storage.
+
+    Simple representation of a vehicle journey from entry to exit
+    for MVP requirements without YAGNI analytics.
     """
     track_id: int
     vehicle_type: VehicleType
@@ -26,31 +26,12 @@ class VehicleJourney:
     exit_timestamp: float | None
     entry_lane: int | None
     exit_lane: int | None
-    lane_changes: list[tuple[float, int, int]]  # (timestamp, from_lane, to_lane)
+    movement_direction: str | None
     total_detections: int
     best_confidence: float
     best_bbox: tuple[int, int, int, int]
     best_detection_timestamp: float
-    movement_direction: str | None
-    average_confidence: float
     journey_duration_seconds: float
-
-    @property
-    def had_lane_changes(self) -> bool:
-        """Check if vehicle changed lanes during journey."""
-        return len(self.lane_changes) > 0
-
-    @property
-    def lanes_visited(self) -> set[int]:
-        """Get set of all lanes visited during journey."""
-        lanes = set()
-        if self.entry_lane is not None:
-            lanes.add(self.entry_lane)
-        if self.exit_lane is not None:
-            lanes.add(self.exit_lane)
-        for _, from_lane, to_lane in self.lane_changes:
-            lanes.update([from_lane, to_lane])
-        return lanes
 
     def to_api_format(self) -> dict[str, Any]:
         """Convert journey to API v2.3 compatible format for final reporting."""
@@ -74,10 +55,7 @@ class VehicleJourney:
             "analytics": {
                 "confidence": self.best_confidence,
                 "journeyDurationSeconds": self.journey_duration_seconds,
-                "totalDetections": self.total_detections,
-                "averageConfidence": self.average_confidence,
-                "laneChanges": len(self.lane_changes),
-                "lanesVisited": list(self.lanes_visited)
+                "totalDetections": self.total_detections
             }
         }
 
@@ -199,8 +177,6 @@ class VehicleExited(VehicleEvent):
             "journeySummary": {
                 "duration": self.journey.journey_duration_seconds,
                 "totalDetections": self.journey.total_detections,
-                "averageConfidence": self.journey.average_confidence,
-                "laneChanges": len(self.journey.lane_changes),
                 "entryLane": self.journey.entry_lane,
                 "exitLane": self.journey.exit_lane
             }

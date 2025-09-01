@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 class VehicleTrackingState:
-    """Internal state for a single tracked vehicle journey.
+    """Simple state tracking for a single vehicle journey.
 
-    Manages the complete lifecycle of a vehicle from entry to exit,
-    collecting all necessary data for journey analytics.
+    Tracks only essential data for MVP vehicle lifecycle management
+    without YAGNI analytics features.
     """
 
     def __init__(self, track_id: int, detection: DetectionResult, lane: int | None, direction: str | None):
@@ -45,27 +45,17 @@ class VehicleTrackingState:
         self.track_id = track_id
         self.vehicle_type = detection.vehicle_type
 
-        # Journey timestamps
+        # Essential timestamps
         self.entry_timestamp = detection.frame_timestamp
         self.last_update_timestamp = detection.frame_timestamp
 
-        # Lane tracking
+        # Simple position tracking (no lane change analytics)
         self.entry_lane = lane
         self.current_lane = lane
-        self.lane_changes: list[tuple[float, int, int]] = []  # (timestamp, from_lane, to_lane)
-
-        # Movement tracking
         self.movement_direction = direction
 
-        # Detection history for analytics
-        self.confidence_history: list[float] = [detection.confidence]
-        self.bbox_history: list[tuple[int, int, int, int]] = [
-            (detection.x1, detection.y1, detection.x2, detection.y2)
-        ]
-        self.detection_timestamps: list[float] = [detection.frame_timestamp]
+        # Essential metrics
         self.total_detections = 1
-
-        # Best detection tracking
         self.best_detection = detection
         self.best_confidence = detection.confidence
 
@@ -77,10 +67,7 @@ class VehicleTrackingState:
             lane: Current lane assignment
             direction: Current movement direction
         """
-        # Update detection history
-        self.confidence_history.append(detection.confidence)
-        self.bbox_history.append((detection.x1, detection.y1, detection.x2, detection.y2))
-        self.detection_timestamps.append(detection.frame_timestamp)
+        # Update essential metrics
         self.total_detections += 1
         self.last_update_timestamp = detection.frame_timestamp
 
@@ -89,19 +76,10 @@ class VehicleTrackingState:
             self.best_detection = detection
             self.best_confidence = detection.confidence
 
-        # Track lane changes
-        if lane is not None and self.current_lane is not None and lane != self.current_lane:
-            self.lane_changes.append((detection.frame_timestamp, self.current_lane, lane))
-            logger.debug(f"Vehicle {self.track_id} changed lanes: {self.current_lane} → {lane}")
-
+        # Simple position update (no lane change tracking)
         self.current_lane = lane
-        if direction:  # Update direction if provided
+        if direction:
             self.movement_direction = direction
-
-    @property
-    def average_confidence(self) -> float:
-        """Calculate average confidence across all detections."""
-        return sum(self.confidence_history) / len(self.confidence_history)
 
     @property
     def journey_duration_seconds(self) -> float:
@@ -130,13 +108,11 @@ class VehicleTrackingState:
             exit_timestamp=exit_timestamp,
             entry_lane=self.entry_lane,
             exit_lane=self.current_lane,
-            lane_changes=self.lane_changes.copy(),
+            movement_direction=self.movement_direction,
             total_detections=self.total_detections,
             best_confidence=self.best_confidence,
             best_bbox=self.best_bbox,
             best_detection_timestamp=self.best_detection.frame_timestamp,
-            movement_direction=self.movement_direction,
-            average_confidence=self.average_confidence,
             journey_duration_seconds=exit_timestamp - self.entry_timestamp
         )
 
@@ -339,7 +315,7 @@ class VehicleTrackingManager:
 
             logger.debug(
                 f"Vehicle {track_id} exited: {journey.journey_duration_seconds:.1f}s journey, "
-                f"{journey.total_detections} detections, {len(journey.lane_changes)} lane changes"
+                f"{journey.total_detections} detections"
             )
 
         return events
@@ -389,26 +365,21 @@ class VehicleTrackingManager:
     def _convert_from_supervision_detections(self,
                                              sv_detections: sv.Detections,
                                              original_detections: list[DetectionResult]) -> list[DetectionResult]:
-        """Convert Supervision Detections back to DetectionResult with track_id."""
+        """Convert Supervision Detections back to DetectionResult with track_id.
+        
+        Simple 1:1 mapping approach - Trust ByteTrack 100% for correct ordering.
+        """
         tracked_detections: list[DetectionResult] = []
 
         if len(sv_detections) == 0 or sv_detections.tracker_id is None:
             return tracked_detections
 
-        # Create working copy for matching
-        working_detections: list[DetectionResult | None] = list(original_detections)
-
+        # Trust ByteTrack: Simple 1:1 mapping by index
         for i, track_id in enumerate(sv_detections.tracker_id):
-            tracked_bbox = sv_detections.xyxy[i]
-
-            # Find best matching original detection
-            best_match_idx = self._find_best_original_match(tracked_bbox, working_detections)
-
-            if best_match_idx is not None and working_detections[best_match_idx] is not None:
-                original = working_detections[best_match_idx]
-                assert original is not None
-
-                # Create new DetectionResult with track_id
+            if i < len(original_detections):
+                original = original_detections[i]
+                
+                # Create DetectionResult with ByteTrack's track_id
                 tracked_detection = DetectionResult(
                     detection_id=f"track_{track_id}_{original.detection_id}",
                     vehicle_type=original.vehicle_type,
@@ -423,48 +394,12 @@ class VehicleTrackingManager:
                     frame_shape=original.frame_shape,
                     track_id=int(track_id)
                 )
-
                 tracked_detections.append(tracked_detection)
-                working_detections[best_match_idx] = None
+            else:
+                logger.warning(f"ByteTrack returned more tracks ({len(sv_detections.tracker_id)}) than original detections ({len(original_detections)})")
 
         return tracked_detections
 
-    def _find_best_original_match(self,
-                                  tracked_bbox: np.ndarray,
-                                  original_detections: list[DetectionResult | None]) -> int | None:
-        """Find original detection that best matches tracked bbox."""
-        best_iou = 0.0
-        best_idx = None
-
-        for i, detection in enumerate(original_detections):
-            if detection is None:
-                continue
-
-            original_bbox = np.array([detection.x1, detection.y1, detection.x2, detection.y2])
-            iou = self._calculate_iou(tracked_bbox, original_bbox)
-
-            if iou > best_iou and iou > 0.1:
-                best_iou = iou
-                best_idx = i
-
-        return best_idx
-
-    def _calculate_iou(self, bbox1: np.ndarray, bbox2: np.ndarray) -> float:
-        """Calculate Intersection over Union (IoU) between two bounding boxes."""
-        x1 = max(bbox1[0], bbox2[0])
-        y1 = max(bbox1[1], bbox2[1])
-        x2 = min(bbox1[2], bbox2[2])
-        y2 = min(bbox1[3], bbox2[3])
-
-        if x2 <= x1 or y2 <= y1:
-            return 0.0
-
-        intersection_area = (x2 - x1) * (y2 - y1)
-        bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
-        bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
-        union_area = bbox1_area + bbox2_area - intersection_area
-
-        return float(intersection_area / union_area) if union_area > 0 else 0.0
 
     def reset(self) -> None:
         """Reset tracking manager state."""
@@ -493,8 +428,6 @@ class VehicleTrackingManager:
             "vehicle_type": vehicle.vehicle_type.value,
             "duration_so_far": vehicle.journey_duration_seconds,
             "total_detections": vehicle.total_detections,
-            "lane_changes": len(vehicle.lane_changes),
             "current_lane": vehicle.current_lane,
-            "best_confidence": vehicle.best_confidence,
-            "average_confidence": vehicle.average_confidence
+            "best_confidence": vehicle.best_confidence
         }

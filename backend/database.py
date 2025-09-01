@@ -129,7 +129,7 @@ class EventDatabase:
                 )
             """)
 
-            # New journey-based table for complete vehicle tracking
+            # Simplified journey table for MVP requirements
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS vehicle_journeys (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,12 +139,10 @@ class EventDatabase:
                     exit_timestamp REAL,                -- When vehicle exited tracking
                     entry_lane INTEGER,                 -- Lane where vehicle entered
                     exit_lane INTEGER,                  -- Lane where vehicle exited
-                    lane_changes_json TEXT,             -- JSON array of lane changes [(timestamp, from_lane, to_lane)]
+                    movement_direction TEXT,            -- Movement direction (left/right/stationary)
                     total_detections INTEGER NOT NULL,  -- Total detections for this vehicle
                     best_confidence REAL NOT NULL,      -- Highest confidence detection
                     best_bbox_json TEXT NOT NULL,       -- JSON [x1,y1,x2,y2] of best detection
-                    movement_direction TEXT,            -- Movement direction (left/right/stationary)
-                    average_confidence REAL NOT NULL,   -- Average confidence across all detections
                     journey_duration_seconds REAL NOT NULL, -- Total journey time
                     best_detection_timestamp REAL NOT NULL, -- Timestamp of best detection
                     created_at REAL NOT NULL DEFAULT (unixepoch())
@@ -335,7 +333,7 @@ class EventDatabase:
             )
 
         try:
-            # Prepare journey data for database storage
+            # Prepare simplified journey data for database storage
             journey_data = (
                 journey.track_id,
                 journey.vehicle_type.value,
@@ -343,12 +341,10 @@ class EventDatabase:
                 journey.exit_timestamp,
                 journey.entry_lane,
                 journey.exit_lane,
-                json.dumps(journey.lane_changes),  # Store lane changes as JSON
+                journey.movement_direction,
                 journey.total_detections,
                 journey.best_confidence,
                 json.dumps(journey.best_bbox),     # Store bbox as JSON array
-                journey.movement_direction,
-                journey.average_confidence,
                 journey.journey_duration_seconds,
                 journey.best_detection_timestamp,
             )
@@ -364,8 +360,7 @@ class EventDatabase:
             logger.debug(
                 f"Vehicle journey {journey.track_id} saved: "
                 f"{journey.journey_duration_seconds:.1f}s, "
-                f"{journey.total_detections} detections, "
-                f"{len(journey.lane_changes)} lane changes"
+                f"{journey.total_detections} detections"
             )
             return True
 
@@ -388,10 +383,9 @@ class EventDatabase:
                 """
                 INSERT INTO vehicle_journeys
                 (track_id, vehicle_type, entry_timestamp, exit_timestamp, entry_lane,
-                 exit_lane, lane_changes_json, total_detections, best_confidence,
-                 best_bbox_json, movement_direction, average_confidence,
-                 journey_duration_seconds, best_detection_timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 exit_lane, movement_direction, total_detections, best_confidence,
+                 best_bbox_json, journey_duration_seconds, best_detection_timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 journey_data,
             )

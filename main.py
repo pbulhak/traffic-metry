@@ -460,8 +460,7 @@ class TrafficMetryProcessor:
                             f"🏁 Vehicle {event.track_id} journey completed and saved: "
                             f"{journey.journey_duration_seconds:.1f}s, "
                             f"{journey.total_detections} detections, "
-                            f"{len(journey.lane_changes)} lane changes, "
-                            f"avg confidence {journey.average_confidence:.2f}"
+                            f"best confidence {journey.best_confidence:.2f}"
                         )
                     else:
                         logger.error(f"Failed to save journey for vehicle {event.track_id}")
