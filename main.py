@@ -31,6 +31,7 @@ from backend.config import ModelSettings, Settings, get_config
 from backend.database import DatabaseError, EventDatabase
 from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
+from backend.tracker import ObjectTracker
 
 # Configure logging
 logging.basicConfig(
@@ -150,8 +151,12 @@ class EventGenerator:
         """
         self.event_counter += 1
 
-        # Generate unique vehicle ID (combination of detection ID and counter)
-        vehicle_id = f"{detection.detection_id}-{self.event_counter}"
+        # Generate vehicle ID: use track_id if available, fallback to detection-based ID
+        if hasattr(detection, 'track_id') and detection.track_id is not None:
+            vehicle_id = f"vehicle_{detection.track_id}"
+        else:
+            # Fallback for raw detections without tracking
+            vehicle_id = f"{detection.detection_id}-{self.event_counter}"
 
         event = {
             "eventId": str(uuid.uuid4()),
@@ -366,6 +371,12 @@ class TrafficMetryProcessor:
         try:
             self.camera = CameraStream(config.camera)
             self.detector = VehicleDetector(config.model)
+            self.object_tracker = ObjectTracker(
+                track_activation_threshold=0.5,    # Detection confidence threshold for track activation
+                lost_track_buffer=30,               # Number of frames to buffer when a track is lost
+                minimum_matching_threshold=0.8,    # Threshold for matching tracks with detections
+                frame_rate=30                      # Video frame rate for prediction algorithms
+            )
             self.lane_analyzer = LaneAnalyzer(config.lanes)
             self.event_generator = EventGenerator()
             self.candidate_saver = CandidateSaver(Path("data/unlabeled_images"), config.model)
@@ -417,12 +428,15 @@ class TrafficMetryProcessor:
 
                         self.frame_count += 1
 
-                        # Detect vehicles
-                        detections = self.detector.detect_vehicles(frame)
-                        self.detection_count += len(detections)
+                        # Detect vehicles (raw detections from YOLO)
+                        raw_detections = self.detector.detect_vehicles(frame)
+                        self.detection_count += len(raw_detections)
 
-                        # Process each detection
-                        for detection in detections:
+                        # 🎯 OBJECT TRACKING: Assign consistent track_id to detections
+                        tracked_detections = self.object_tracker.update(raw_detections)
+
+                        # Process each tracked detection
+                        for detection in tracked_detections:
                             await self._process_detection(frame, detection)
 
                         # Log statistics periodically
@@ -538,12 +552,16 @@ class TrafficMetryProcessor:
             (self.detection_count / elapsed_time) * 60 if elapsed_time > 0 else 0
         )
 
+        tracking_stats = self.object_tracker.get_tracking_stats()
+
         logger.info(
             f"Statistics - Frames: {self.frame_count}, "
             f"Detections: {self.detection_count}, "
             f"Events: {self.event_count}, "
             f"FPS: {fps:.1f}, "
             f"Det/min: {detections_per_minute:.1f}, "
+            f"Active tracks: {tracking_stats['active_tracks']}, "
+            f"Total tracks: {tracking_stats['total_tracks_created']}, "
             f"Candidates saved: {self.candidate_saver.saved_count}"
         )
 
@@ -554,6 +572,9 @@ class TrafficMetryProcessor:
         logger.info(f"Total detections: {self.detection_count}")
         logger.info(f"Total events generated: {self.event_count}")
         logger.info(f"Candidate images saved: {self.candidate_saver.saved_count}")
+
+        tracking_stats = self.object_tracker.get_tracking_stats()
+        logger.info(f"Total vehicle tracks created: {tracking_stats['total_tracks_created']}")
 
         detector_info = self.detector.get_model_info()
         logger.info(f"Detector info: {detector_info}")
