@@ -145,7 +145,7 @@ class LineManager:
             top_right_x = max(top_line.start[0], top_line.end[0])
             bottom_left_x = min(bottom_line.start[0], bottom_line.end[0])
             bottom_right_x = max(bottom_line.start[0], bottom_line.end[0])
-            
+
             left_x = min(top_left_x, bottom_left_x)
             right_x = max(top_right_x, bottom_right_x)
 

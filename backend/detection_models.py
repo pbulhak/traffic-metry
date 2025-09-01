@@ -62,6 +62,7 @@ class DetectionResult:
         frame_timestamp: Unix timestamp when frame was captured
         frame_id: Sequential frame number for ordering
         frame_shape: Original frame dimensions (height, width, channels)
+        track_id: Consistent tracking ID assigned by ObjectTracker (None for raw detections)
     """
 
     # Bounding box coordinates in pixels (integer values)
@@ -80,6 +81,7 @@ class DetectionResult:
     frame_timestamp: float
     frame_id: int
     frame_shape: tuple
+    track_id: int | None = None  # Assigned by ObjectTracker, None for raw detections
 
     def __post_init__(self) -> None:
         """Validate detection result data after initialization."""
@@ -165,6 +167,7 @@ class DetectionResult:
         frame_id: int,
         frame_shape: tuple,
         detection_id: str | None = None,
+        track_id: int | None = None,
     ) -> DetectionResult:
         """Create DetectionResult from YOLO model output.
 
@@ -183,6 +186,7 @@ class DetectionResult:
             frame_id: Sequential frame number
             frame_shape: Original frame dimensions (height, width, channels)
             detection_id: Optional unique identifier, generated if None
+            track_id: Optional tracking ID from ObjectTracker
 
         Returns:
             DetectionResult instance ready for further processing.
@@ -202,6 +206,7 @@ class DetectionResult:
             frame_timestamp=frame_timestamp,
             frame_id=frame_id,
             frame_shape=frame_shape,
+            track_id=track_id,
         )
 
 
