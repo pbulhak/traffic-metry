@@ -18,10 +18,7 @@ import logging
 import signal
 import sys
 import time
-import uuid
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import cv2
 from numpy.typing import NDArray
@@ -31,7 +28,8 @@ from backend.config import ModelSettings, Settings, get_config
 from backend.database import DatabaseError, EventDatabase
 from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
-from backend.tracker import ObjectTracker
+from backend.tracker import VehicleTrackingManager
+from backend.vehicle_events import VehicleEntered, VehicleExited, VehicleUpdated
 
 # Configure logging
 logging.basicConfig(
@@ -128,66 +126,6 @@ class LaneAnalyzer:
 
         return None  # Pojazd jest poza wszystkimi zdefiniowanymi pasami
 
-
-class EventGenerator:
-    """Generates API v2.3 compatible events from detection results."""
-
-    def __init__(self) -> None:
-        """Initialize event generator."""
-        self.event_counter = 0
-
-    def create_vehicle_event(
-        self, detection: DetectionResult, lane_number: int | None, direction: str | None
-    ) -> dict:
-        """Create API v2.3 compatible vehicle event.
-
-        Args:
-            detection: Vehicle detection result
-            lane_number: Assigned lane number (None if unassigned)
-            direction: Movement direction (None if unknown)
-
-        Returns:
-            Dictionary representing vehicle event in API v2.3 format
-        """
-        self.event_counter += 1
-
-        # Generate vehicle ID: use track_id if available, fallback to detection-based ID
-        if hasattr(detection, 'track_id') and detection.track_id is not None:
-            vehicle_id = f"vehicle_{detection.track_id}"
-        else:
-            # Fallback for raw detections without tracking
-            vehicle_id = f"{detection.detection_id}-{self.event_counter}"
-
-        event = {
-            "eventId": str(uuid.uuid4()),
-            "timestamp": datetime.fromtimestamp(detection.frame_timestamp, tz=UTC)
-            .isoformat()
-            .replace("+00:00", "Z"),
-            "vehicleId": vehicle_id,
-            "vehicleType": detection.vehicle_type.value,
-            "movement": {
-                "direction": direction or "stationary",
-                "lane": lane_number if lane_number is not None else -1,
-            },
-            "vehicleColor": {
-                "hex": None,  # Will be implemented in Phase 3
-                "name": None,
-            },
-            "position": {
-                "boundingBox": {
-                    "x1": detection.x1,
-                    "y1": detection.y1,
-                    "x2": detection.x2,
-                    "y2": detection.y2,
-                }
-            },
-            "analytics": {
-                "confidence": detection.confidence,
-                "estimatedSpeedKph": None,  # Future implementation
-            },
-        }
-
-        return event
 
 
 class CandidateSaver:
@@ -371,14 +309,14 @@ class TrafficMetryProcessor:
         try:
             self.camera = CameraStream(config.camera)
             self.detector = VehicleDetector(config.model)
-            self.object_tracker = ObjectTracker(
+            self.vehicle_tracking_manager = VehicleTrackingManager(
                 track_activation_threshold=0.5,    # Detection confidence threshold for track activation
                 lost_track_buffer=30,               # Number of frames to buffer when a track is lost
                 minimum_matching_threshold=0.8,    # Threshold for matching tracks with detections
-                frame_rate=30                      # Video frame rate for prediction algorithms
+                frame_rate=30,                     # Video frame rate for prediction algorithms
+                update_interval_seconds=1.0        # WebSocket update interval
             )
             self.lane_analyzer = LaneAnalyzer(config.lanes)
-            self.event_generator = EventGenerator()
             self.candidate_saver = CandidateSaver(Path("data/unlabeled_images"), config.model)
             self.event_database = EventDatabase(config.database)
 
@@ -432,12 +370,23 @@ class TrafficMetryProcessor:
                         raw_detections = self.detector.detect_vehicles(frame)
                         self.detection_count += len(raw_detections)
 
-                        # 🎯 OBJECT TRACKING: Assign consistent track_id to detections
-                        tracked_detections = self.object_tracker.update(raw_detections)
+                        # Assign lanes to detections before tracking
+                        lane_assignments = {}
+                        for detection in raw_detections:
+                            lane, direction = self.lane_analyzer.assign_lane(detection)
+                            lane_assignments[detection.detection_id] = (lane, direction)
 
-                        # Process each tracked detection
+                        # 🎯 EVENT-DRIVEN TRACKING: Update tracking and get lifecycle events
+                        tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
+                            raw_detections, lane_assignments
+                        )
+
+                        # Process vehicle lifecycle events (not detections!)
+                        await self._process_vehicle_events(vehicle_events)
+
+                        # Save candidate images for active vehicles
                         for detection in tracked_detections:
-                            await self._process_detection(frame, detection)
+                            await self._save_candidate_image(frame, detection)
 
                         # Log statistics periodically
                         current_time = time.time()
@@ -471,38 +420,66 @@ class TrafficMetryProcessor:
             logger.info("TrafficMetry processing stopped")
             self._log_final_statistics()
 
-    async def _process_detection(
-        self, frame: NDArray, detection: DetectionResult
-    ) -> dict[str, Any]:
-        """Process a single vehicle detection.
+    async def _process_vehicle_events(self, vehicle_events: list) -> None:
+        """Process vehicle lifecycle events from VehicleTrackingManager.
+
+        Args:
+            vehicle_events: List of VehicleEvent objects (VehicleEntered, VehicleUpdated, VehicleExited)
+        """
+        for event in vehicle_events:
+            if isinstance(event, VehicleEntered):
+                # Vehicle entered tracking area
+                logger.info(
+                    f"🚗 Vehicle {event.track_id} ({event.vehicle_type}) entered in lane {event.lane} "
+                    f"moving {event.direction}"
+                )
+
+                # Future: Send WebSocket notification for vehicle entry
+                # await self._publish_websocket_event(event.to_websocket_format())
+
+            elif isinstance(event, VehicleUpdated):
+                # Vehicle position updated - for real-time WebSocket
+                logger.debug(
+                    f"📍 Vehicle {event.track_id} updated: lane {event.lane}, "
+                    f"confidence {event.current_confidence:.2f}, "
+                    f"detections {event.total_detections_so_far}"
+                )
+
+                # Future: Send real-time WebSocket update
+                # await self._publish_websocket_event(event.to_websocket_format())
+
+            elif isinstance(event, VehicleExited):
+                # Vehicle exited - save complete journey to database
+                journey = event.journey
+
+                try:
+                    success = await self.event_database.save_vehicle_journey(journey)
+                    if success:
+                        self.event_count += 1
+                        logger.info(
+                            f"🏁 Vehicle {event.track_id} journey completed and saved: "
+                            f"{journey.journey_duration_seconds:.1f}s, "
+                            f"{journey.total_detections} detections, "
+                            f"{len(journey.lane_changes)} lane changes, "
+                            f"avg confidence {journey.average_confidence:.2f}"
+                        )
+                    else:
+                        logger.error(f"Failed to save journey for vehicle {event.track_id}")
+
+                except DatabaseError as e:
+                    logger.error(f"Database error saving vehicle {event.track_id} journey: {e}")
+
+                # Future: Send WebSocket exit notification
+                # await self._publish_websocket_event(event.to_websocket_format())
+
+    async def _save_candidate_image(self, frame: NDArray, detection: DetectionResult) -> None:
+        """Save candidate image for tracked vehicle.
 
         Args:
             frame: Source video frame
-            detection: Vehicle detection result
-
-        Returns:
-            Vehicle event dictionary in API v2.3 format
+            detection: Vehicle detection result with track_id
         """
         try:
-            # Assign lane and direction
-            lane_number, direction = self.lane_analyzer.assign_lane(detection)
-
-            # Generate API event
-            event = self.event_generator.create_vehicle_event(detection, lane_number, direction)
-            self.event_count += 1
-
-            # Save event to database
-            try:
-                await self.event_database.save_event(event)
-                logger.debug(f"Event {event['eventId']} saved to database")
-            except DatabaseError as e:
-                logger.error(f"Failed to save event to database: {e}")
-
-            # Log event (in future this will be sent via WebSocket)
-            logger.info(
-                f"Vehicle event: {event['vehicleType']} in lane {lane_number} moving {direction}"
-            )
-
             # Save candidate image (with some probability to avoid too many images)
             if (
                 detection.confidence > 0.7 and self.frame_count % 10 == 0
@@ -511,35 +488,8 @@ class TrafficMetryProcessor:
                     None, self.candidate_saver.save_candidate, frame, detection
                 )
 
-            return event
-
         except Exception as e:
-            logger.error(f"Error processing detection {detection.detection_id}: {e}")
-
-            # Return properly structured error event compliant with API v2.3
-            return {
-                "eventId": str(uuid.uuid4()),
-                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                "vehicleId": f"error-{detection.detection_id}",
-                "vehicleType": "other_vehicle",  # Safe fallback
-                "movement": {
-                    "direction": "stationary",
-                    "lane": -1  # Error indicator
-                },
-                "vehicleColor": {
-                    "hex": None,
-                    "name": None
-                },
-                "position": {
-                    "boundingBox": {
-                        "x1": 0, "y1": 0, "x2": 0, "y2": 0  # Empty bounding box
-                    }
-                },
-                "analytics": {
-                    "confidence": 0.0,  # Zero confidence indicates error
-                    "estimatedSpeedKph": None
-                }
-            }
+            logger.error(f"Error saving candidate image for detection {detection.detection_id}: {e}")
 
     def _log_statistics(self, elapsed_time: float) -> None:
         """Log performance statistics.
@@ -552,7 +502,7 @@ class TrafficMetryProcessor:
             (self.detection_count / elapsed_time) * 60 if elapsed_time > 0 else 0
         )
 
-        tracking_stats = self.object_tracker.get_tracking_stats()
+        tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
 
         logger.info(
             f"Statistics - Frames: {self.frame_count}, "
@@ -560,8 +510,9 @@ class TrafficMetryProcessor:
             f"Events: {self.event_count}, "
             f"FPS: {fps:.1f}, "
             f"Det/min: {detections_per_minute:.1f}, "
-            f"Active tracks: {tracking_stats['active_tracks']}, "
-            f"Total tracks: {tracking_stats['total_tracks_created']}, "
+            f"Active vehicles: {tracking_stats['active_vehicles']}, "
+            f"Total vehicles: {tracking_stats['total_vehicles_tracked']}, "
+            f"Journeys completed: {tracking_stats['total_journeys_completed']}, "
             f"Candidates saved: {self.candidate_saver.saved_count}"
         )
 
@@ -573,8 +524,9 @@ class TrafficMetryProcessor:
         logger.info(f"Total events generated: {self.event_count}")
         logger.info(f"Candidate images saved: {self.candidate_saver.saved_count}")
 
-        tracking_stats = self.object_tracker.get_tracking_stats()
-        logger.info(f"Total vehicle tracks created: {tracking_stats['total_tracks_created']}")
+        tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
+        logger.info(f"Total vehicles tracked: {tracking_stats['total_vehicles_tracked']}")
+        logger.info(f"Complete journeys recorded: {tracking_stats['total_journeys_completed']}")
 
         detector_info = self.detector.get_model_info()
         logger.info(f"Detector info: {detector_info}")

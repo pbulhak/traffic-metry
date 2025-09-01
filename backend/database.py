@@ -8,6 +8,7 @@ data preservation with connection lifecycle management and thread-safe operation
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
@@ -110,7 +111,7 @@ class EventDatabase:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
 
         try:
-            # Create table with schema matching EventGenerator output
+            # Legacy table for backward compatibility (detection-based events)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS vehicle_events (
                     event_id TEXT PRIMARY KEY,           -- event["eventId"]
@@ -128,9 +129,41 @@ class EventDatabase:
                 )
             """)
 
+            # New journey-based table for complete vehicle tracking
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS vehicle_journeys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    track_id INTEGER NOT NULL,           -- ByteTrack tracking ID
+                    vehicle_type TEXT NOT NULL,          -- VehicleType enum value
+                    entry_timestamp REAL NOT NULL,      -- When vehicle entered tracking
+                    exit_timestamp REAL,                -- When vehicle exited tracking
+                    entry_lane INTEGER,                 -- Lane where vehicle entered
+                    exit_lane INTEGER,                  -- Lane where vehicle exited
+                    lane_changes_json TEXT,             -- JSON array of lane changes [(timestamp, from_lane, to_lane)]
+                    total_detections INTEGER NOT NULL,  -- Total detections for this vehicle
+                    best_confidence REAL NOT NULL,      -- Highest confidence detection
+                    best_bbox_json TEXT NOT NULL,       -- JSON [x1,y1,x2,y2] of best detection
+                    movement_direction TEXT,            -- Movement direction (left/right/stationary)
+                    average_confidence REAL NOT NULL,   -- Average confidence across all detections
+                    journey_duration_seconds REAL NOT NULL, -- Total journey time
+                    best_detection_timestamp REAL NOT NULL, -- Timestamp of best detection
+                    created_at REAL NOT NULL DEFAULT (unixepoch())
+                )
+            """)
+
             # Create performance indexes for long-term queries
+            # Legacy table indexes
             conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON vehicle_events(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_vehicle_id ON vehicle_events(vehicle_id)")
+
+            # Journey table indexes for efficient analytics queries
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_entry_timestamp ON vehicle_journeys(entry_timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_exit_timestamp ON vehicle_journeys(exit_timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_vehicle_type ON vehicle_journeys(vehicle_type)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_track_id ON vehicle_journeys(track_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_duration ON vehicle_journeys(journey_duration_seconds)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_entry_lane ON vehicle_journeys(entry_lane)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_exit_lane ON vehicle_journeys(exit_lane)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_vehicle_type ON vehicle_events(vehicle_type)"
             )
@@ -282,6 +315,91 @@ class EventDatabase:
         except sqlite3.Error as e:
             raise DatabaseConnectionError(
                 f"Failed to save event to database: {e}", db_path=str(self.db_path)
+            ) from e
+
+    async def save_vehicle_journey(self, journey: Any) -> bool:
+        """Save complete vehicle journey to database.
+
+        Args:
+            journey: VehicleJourney object from VehicleTrackingManager
+
+        Returns:
+            True if journey was saved successfully, False otherwise
+
+        Raises:
+            DatabaseConnectionError: If database operation fails
+        """
+        if not self._connection:
+            raise DatabaseConnectionError(
+                "Database not connected. Call connect() first.", db_path=str(self.db_path)
+            )
+
+        try:
+            # Prepare journey data for database storage
+            journey_data = (
+                journey.track_id,
+                journey.vehicle_type.value,
+                journey.entry_timestamp,
+                journey.exit_timestamp,
+                journey.entry_lane,
+                journey.exit_lane,
+                json.dumps(journey.lane_changes),  # Store lane changes as JSON
+                journey.total_detections,
+                journey.best_confidence,
+                json.dumps(journey.best_bbox),     # Store bbox as JSON array
+                journey.movement_direction,
+                journey.average_confidence,
+                journey.journey_duration_seconds,
+                journey.best_detection_timestamp,
+            )
+
+            # Thread-safe database save operation
+            async with self._lock:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None, self._save_journey_sync, journey_data, self._connection
+                )
+                self.saved_count += 1
+
+            logger.debug(
+                f"Vehicle journey {journey.track_id} saved: "
+                f"{journey.journey_duration_seconds:.1f}s, "
+                f"{journey.total_detections} detections, "
+                f"{len(journey.lane_changes)} lane changes"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to save vehicle journey {journey.track_id}: {e}")
+            return False
+
+    def _save_journey_sync(self, journey_data: tuple, conn: sqlite3.Connection) -> None:
+        """Synchronous journey database save operation (for executor).
+
+        Args:
+            journey_data: Tuple of journey data for database insertion
+            conn: SQLite connection to use for the operation
+
+        Raises:
+            DatabaseConnectionError: If database operation fails
+        """
+        try:
+            conn.execute(
+                """
+                INSERT INTO vehicle_journeys
+                (track_id, vehicle_type, entry_timestamp, exit_timestamp, entry_lane,
+                 exit_lane, lane_changes_json, total_detections, best_confidence,
+                 best_bbox_json, movement_direction, average_confidence,
+                 journey_duration_seconds, best_detection_timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                journey_data,
+            )
+            conn.commit()
+
+        except sqlite3.Error as e:
+            raise DatabaseConnectionError(
+                f"Failed to save journey to database: {e}", db_path=str(self.db_path)
             ) from e
 
     async def get_recent_events(self, limit: int = 100) -> list[dict]:
