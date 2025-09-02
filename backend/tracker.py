@@ -2,19 +2,21 @@
 
 This module provides state-of-the-art vehicle tracking using ByteTrack algorithm
 from Roboflow Supervision, enhanced with complete vehicle journey lifecycle
-management and event-driven architecture.
+management, dynamic direction detection, and event-driven architecture.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import supervision as sv
 
 from backend.detection_models import DetectionResult
+from backend.direction_analyzer import DynamicDirectionAnalyzer, MovementAnalytics
+from backend.journey_manager import JourneyIDManager
 from backend.vehicle_events import (
     VehicleEntered,
     VehicleEvent,
@@ -27,59 +29,84 @@ logger = logging.getLogger(__name__)
 
 
 class VehicleTrackingState:
-    """Simple state tracking for a single vehicle journey.
+    """Enhanced state tracking for a single vehicle journey with dynamic direction detection.
 
-    Tracks only essential data for MVP vehicle lifecycle management
-    without YAGNI analytics features.
+    Tracks essential data and position history for dynamic movement analysis
+    without static lane dependencies.
     """
 
-    def __init__(self, track_id: int, detection: DetectionResult, lane: int | None, direction: str | None):
+    MAX_POSITION_HISTORY = 15  # Keep last 15 positions (~0.5s at 30fps)
+
+    def __init__(self, track_id: int, detection: DetectionResult, journey_id: str):
         """Initialize vehicle tracking state.
 
         Args:
             track_id: Unique tracking ID assigned by ByteTrack
             detection: Initial detection result
-            lane: Initial lane assignment
-            direction: Initial movement direction
+            journey_id: Global unique journey identifier
         """
         self.track_id = track_id
+        self.journey_id = journey_id
         self.vehicle_type = detection.vehicle_type
 
         # Essential timestamps
         self.entry_timestamp = detection.frame_timestamp
         self.last_update_timestamp = detection.frame_timestamp
 
-        # Simple position tracking (no lane change analytics)
-        self.entry_lane = lane
-        self.current_lane = lane
-        self.movement_direction = direction
+        # Position tracking for dynamic analysis
+        self.position_history: List[Tuple[float, Tuple[int, int]]] = [
+            (detection.frame_timestamp, detection.centroid)
+        ]
+        self.entry_position = detection.centroid
+        self.current_position = detection.centroid
+
+        # Dynamic direction detection
+        self.movement_direction: Optional[str] = None  # "left", "right", "stationary"
+        self.direction_confidence: float = 0.0
+        self.direction_analyzer = DynamicDirectionAnalyzer()
 
         # Essential metrics
         self.total_detections = 1
         self.best_detection = detection
         self.best_confidence = detection.confidence
 
-    def update(self, detection: DetectionResult, lane: int | None, direction: str | None) -> None:
-        """Update vehicle state with new detection.
+    def update(self, detection: DetectionResult) -> None:
+        """Update vehicle state with new detection and analyze movement.
 
         Args:
             detection: New detection result
-            lane: Current lane assignment
-            direction: Current movement direction
         """
         # Update essential metrics
         self.total_detections += 1
         self.last_update_timestamp = detection.frame_timestamp
+        self.current_position = detection.centroid
 
         # Update best detection if confidence improved
         if detection.confidence > self.best_confidence:
             self.best_detection = detection
             self.best_confidence = detection.confidence
 
-        # Simple position update (no lane change tracking)
-        self.current_lane = lane
-        if direction:
-            self.movement_direction = direction
+        # Add to position history with memory management
+        self.position_history.append((detection.frame_timestamp, detection.centroid))
+        if len(self.position_history) > self.MAX_POSITION_HISTORY:
+            self.position_history.pop(0)  # Remove oldest position
+
+        # Update dynamic direction analysis
+        self._update_movement_direction()
+
+    def _update_movement_direction(self) -> None:
+        """Update movement direction based on position history."""
+        new_direction, new_confidence = self.direction_analyzer.analyze_movement_direction(
+            self.position_history
+        )
+
+        # Smooth direction transitions
+        smoothed_direction, smoothed_confidence = self.direction_analyzer.smooth_direction_transition(
+            self.movement_direction, new_direction, new_confidence, self.direction_confidence
+        )
+
+        self.movement_direction = smoothed_direction
+        self.direction_confidence = smoothed_confidence
 
     @property
     def journey_duration_seconds(self) -> float:
@@ -99,29 +126,46 @@ class VehicleTrackingState:
             exit_timestamp: When the vehicle exited tracking
             
         Returns:
-            Complete VehicleJourney data
+            Complete VehicleJourney data with movement analytics
         """
+        # Calculate movement analytics
+        total_distance = MovementAnalytics.calculate_total_distance(self.position_history)
+        average_speed = MovementAnalytics.calculate_average_speed(self.position_history)
+        displacement_vector = MovementAnalytics.get_displacement_vector(self.position_history)
+        
         return VehicleJourney(
             track_id=self.track_id,
+            journey_id=self.journey_id,
             vehicle_type=self.vehicle_type,
             entry_timestamp=self.entry_timestamp,
             exit_timestamp=exit_timestamp,
-            entry_lane=self.entry_lane,
-            exit_lane=self.current_lane,
+            journey_duration_seconds=exit_timestamp - self.entry_timestamp,
+            
+            # Position-based data (replaces lane data)
+            entry_position=self.entry_position,
+            exit_position=self.current_position,
             movement_direction=self.movement_direction,
+            direction_confidence=self.direction_confidence,
+            
+            # Movement analytics  
+            total_movement_pixels=total_distance,
+            average_speed_pixels_per_second=average_speed,
+            displacement_vector=displacement_vector,
+            
+            # Essential metrics
             total_detections=self.total_detections,
             best_confidence=self.best_confidence,
             best_bbox=self.best_bbox,
-            best_detection_timestamp=self.best_detection.frame_timestamp,
-            journey_duration_seconds=exit_timestamp - self.entry_timestamp
+            best_detection_timestamp=self.best_detection.frame_timestamp
         )
 
 
 class VehicleTrackingManager:
-    """Advanced vehicle tracking with complete lifecycle management.
+    """Advanced vehicle tracking with dynamic direction detection and unique journey IDs.
     
     Event-driven architecture that manages vehicle journeys from entry to exit,
-    providing real-time updates and complete journey analytics.
+    providing real-time updates, dynamic movement analysis, and complete journey analytics
+    without static lane dependencies.
     """
 
     def __init__(self,
@@ -152,12 +196,15 @@ class VehicleTrackingManager:
             self.update_interval_seconds = update_interval_seconds
             self.last_update_times: dict[int, float] = {}
 
+            # Journey ID management
+            self.journey_id_manager = JourneyIDManager()
+
             # Statistics
             self.total_vehicles_tracked = 0
             self.total_journeys_completed = 0
 
             logger.info(
-                f"VehicleTrackingManager initialized: "
+                f"VehicleTrackingManager initialized with dynamic direction detection: "
                 f"activation_threshold={track_activation_threshold}, "
                 f"lost_buffer={lost_track_buffer}, "
                 f"matching_threshold={minimum_matching_threshold}, "
@@ -168,14 +215,11 @@ class VehicleTrackingManager:
             logger.error(f"Failed to initialize VehicleTrackingManager: {e}")
             raise
 
-    def update(self,
-               detections: list[DetectionResult],
-               lane_assignments: dict[str, tuple[int | None, str | None]]) -> tuple[list[DetectionResult], list[VehicleEvent]]:
-        """Update tracking and generate vehicle lifecycle events.
+    def update(self, detections: list[DetectionResult]) -> tuple[list[DetectionResult], list[VehicleEvent]]:
+        """Update tracking and generate vehicle lifecycle events with dynamic direction detection.
 
         Args:
             detections: List of raw detections from VehicleDetector
-            lane_assignments: Mapping of detection_id to (lane, direction)
 
         Returns:
             Tuple of (tracked_detections, vehicle_events)
@@ -201,20 +245,18 @@ class VehicleTrackingManager:
 
         # Generate lifecycle events
         events.extend(self._generate_lifecycle_events(
-            tracked_detections, lane_assignments, current_timestamp
+            tracked_detections, current_timestamp
         ))
 
         return tracked_detections, events
 
     def _generate_lifecycle_events(self,
                                    tracked_detections: list[DetectionResult],
-                                   lane_assignments: dict[str, tuple[int | None, str | None]],
                                    current_timestamp: float) -> list[VehicleEvent]:
-        """Generate vehicle lifecycle events from tracked detections.
+        """Generate vehicle lifecycle events from tracked detections with dynamic analysis.
         
         Args:
             tracked_detections: Detections with track_id assigned
-            lane_assignments: Lane assignments for each detection
             current_timestamp: Current frame timestamp
             
         Returns:
@@ -231,34 +273,31 @@ class VehicleTrackingManager:
             track_id = detection.track_id
             current_track_ids.add(track_id)
 
-            # Get lane assignment
-            lane, direction = lane_assignments.get(detection.detection_id, (None, None))
-
             if track_id not in self.active_vehicles:
-                # New vehicle entered
-                vehicle_state = VehicleTrackingState(track_id, detection, lane, direction)
+                # New vehicle entered - create unique journey ID
+                journey_id = self.journey_id_manager.create_journey_id(track_id)
+                vehicle_state = VehicleTrackingState(track_id, detection, journey_id)
                 self.active_vehicles[track_id] = vehicle_state
                 self.total_vehicles_tracked += 1
 
                 entered_event = VehicleEntered(
                     track_id=track_id,
+                    journey_id=journey_id,
                     timestamp=detection.frame_timestamp,
                     vehicle_type=detection.vehicle_type,
-                    detection=detection,
-                    lane=lane,
-                    direction=direction
+                    detection=detection
                 )
                 events.append(entered_event)
 
                 # Set initial update time
                 self.last_update_times[track_id] = current_timestamp
 
-                logger.debug(f"Vehicle {track_id} entered: {detection.vehicle_type} in lane {lane}")
+                logger.info(f"🚗 Vehicle {journey_id} (Track {track_id}) entered: {detection.vehicle_type}")
 
             else:
-                # Update existing vehicle
+                # Update existing vehicle with dynamic direction analysis
                 vehicle_state = self.active_vehicles[track_id]
-                vehicle_state.update(detection, lane, direction)
+                vehicle_state.update(detection)
 
                 # Generate VehicleUpdated event if enough time has passed
                 last_update = self.last_update_times.get(track_id, 0)
@@ -266,11 +305,12 @@ class VehicleTrackingManager:
 
                     updated_event = VehicleUpdated(
                         track_id=track_id,
+                        journey_id=vehicle_state.journey_id,
                         timestamp=detection.frame_timestamp,
                         vehicle_type=detection.vehicle_type,
                         detection=detection,
-                        lane=lane,
-                        direction=direction,
+                        movement_direction=vehicle_state.movement_direction,
+                        direction_confidence=vehicle_state.direction_confidence,
                         total_detections_so_far=vehicle_state.total_detections,
                         current_confidence=detection.confidence
                     )
@@ -301,11 +341,15 @@ class VehicleTrackingManager:
             self.last_update_times.pop(track_id, None)
             self.total_journeys_completed += 1
 
-            # Create complete journey data
+            # Release journey ID
+            journey_id = self.journey_id_manager.release_journey_id(track_id)
+
+            # Create complete journey data with analytics
             journey = vehicle_state.create_journey(current_timestamp)
 
             event = VehicleExited(
                 track_id=track_id,
+                journey_id=journey_id or vehicle_state.journey_id,
                 timestamp=current_timestamp,
                 vehicle_type=vehicle_state.vehicle_type,
                 journey=journey,
@@ -313,9 +357,11 @@ class VehicleTrackingManager:
             )
             events.append(event)
 
-            logger.debug(
-                f"Vehicle {track_id} exited: {journey.journey_duration_seconds:.1f}s journey, "
-                f"{journey.total_detections} detections"
+            logger.info(
+                f"🏁 Vehicle {journey_id} (Track {track_id}) journey completed: "
+                f"{journey.journey_duration_seconds:.1f}s, {journey.total_detections} detections, "
+                f"direction: {journey.movement_direction} ({journey.direction_confidence:.2f}), "
+                f"distance: {journey.total_movement_pixels:.0f}px"
             )
 
         return events
@@ -406,15 +452,20 @@ class VehicleTrackingManager:
         self.tracker.reset()
         self.active_vehicles.clear()
         self.last_update_times.clear()
+        self.journey_id_manager.reset()
         logger.info("VehicleTrackingManager state reset")
 
     def get_tracking_stats(self) -> dict[str, Any]:
-        """Get comprehensive tracking statistics."""
+        """Get comprehensive tracking statistics including journey management."""
+        journey_stats = self.journey_id_manager.get_statistics()
+        
         return {
             "active_vehicles": len(self.active_vehicles),
             "total_vehicles_tracked": self.total_vehicles_tracked,
             "total_journeys_completed": self.total_journeys_completed,
-            "active_track_ids": list(self.active_vehicles.keys())
+            "active_track_ids": list(self.active_vehicles.keys()),
+            "active_journey_ids": self.journey_id_manager.get_active_journey_ids(),
+            "journey_statistics": journey_stats
         }
 
     def get_vehicle_journey_preview(self, track_id: int) -> dict[str, Any] | None:
@@ -425,9 +476,19 @@ class VehicleTrackingManager:
         vehicle = self.active_vehicles[track_id]
         return {
             "track_id": track_id,
+            "journey_id": vehicle.journey_id,
             "vehicle_type": vehicle.vehicle_type.value,
             "duration_so_far": vehicle.journey_duration_seconds,
             "total_detections": vehicle.total_detections,
-            "current_lane": vehicle.current_lane,
-            "best_confidence": vehicle.best_confidence
+            "current_position": vehicle.current_position,
+            "entry_position": vehicle.entry_position,
+            "movement_direction": vehicle.movement_direction,
+            "direction_confidence": vehicle.direction_confidence,
+            "best_confidence": vehicle.best_confidence,
+            "position_history_length": len(vehicle.position_history)
         }
+    
+    def cleanup_stale_journeys(self) -> int:
+        """Cleanup stale journey IDs that no longer have active vehicles."""
+        active_track_ids = set(self.active_vehicles.keys())
+        return self.journey_id_manager.cleanup_stale_journeys(active_track_ids)

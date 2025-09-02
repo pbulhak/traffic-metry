@@ -50,7 +50,7 @@ from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
 # Import classes from main.py (temporary until moved to backend modules)
-from main import CandidateSaver, LaneAnalyzer
+from main import CandidateSaver
 
 # Configure diagnostics logging
 logging.basicConfig(
@@ -73,7 +73,6 @@ class DiagnosticsState:
     database_enabled: bool = True
     candidates_enabled: bool = True
     paused: bool = False
-    show_lanes: bool = True
     show_track_ids: bool = True
     show_confidence: bool = True
     
@@ -143,8 +142,7 @@ class DiagnosticsViewer:
                 update_interval_seconds=1.0
             )
             
-            # Lane analyzer (using lanes config if available)
-            self.lane_analyzer = LaneAnalyzer(getattr(self.config, 'lanes', None))
+            # LaneAnalyzer removed - dynamic direction detection now handled in VehicleTrackingManager
             
             # Candidate saver
             self.candidate_saver = CandidateSaver(
@@ -229,12 +227,9 @@ class DiagnosticsViewer:
                             raw_detections = self.detector.detect_vehicles(frame)
                             self.state.total_detections += len(raw_detections)
                             
-                            # Assign lanes
-                            lane_assignments = self._assign_lanes(raw_detections)
-                            
-                            # Update tracking and get events
+                            # Update tracking with dynamic direction detection
                             tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                                raw_detections, lane_assignments
+                                raw_detections
                             )
                             
                             # Process events (database, logging)
@@ -287,31 +282,23 @@ class DiagnosticsViewer:
             # In pause mode, return last captured frame
             return self.state.last_frame
 
-    def _assign_lanes(self, detections: List[DetectionResult]) -> Dict[str, Tuple[Optional[int], Optional[str]]]:
-        """Assign lanes to detections using LaneAnalyzer."""
-        lane_assignments = {}
-        
-        for detection in detections:
-            # LaneAnalyzer.assign_lane() expects the full detection object, not just Y coordinate
-            lane, direction = self.lane_analyzer.assign_lane(detection)
-            lane_assignments[detection.detection_id] = (lane, direction)
-        
-        return lane_assignments
+    # _assign_lanes() method removed - dynamic direction detection now handled in VehicleTrackingManager
 
     async def _process_vehicle_events(self, events: List[VehicleEvent]) -> None:
         """Process vehicle lifecycle events with conditional database saving."""
         for event in events:
             if isinstance(event, VehicleEntered):
-                logger.info(f"🚗 Vehicle {event.track_id} ({event.vehicle_type.value}) entered")
+                logger.info(f"🚗 Vehicle {event.journey_id} (Track {event.track_id}) ({event.vehicle_type.value}) entered")
                 
             elif isinstance(event, VehicleUpdated):
-                logger.debug(f"📍 Vehicle {event.track_id} updated")
+                logger.debug(f"📍 Vehicle {event.journey_id} (Track {event.track_id}) updated - direction: {event.movement_direction}")
                 
             elif isinstance(event, VehicleExited):
                 logger.info(
-                    f"🏁 Vehicle {event.track_id} journey completed: "
+                    f"🏁 Vehicle {event.journey_id} (Track {event.track_id}) journey completed: "
                     f"{event.journey.journey_duration_seconds:.1f}s, "
-                    f"{event.journey.total_detections} detections"
+                    f"{event.journey.total_detections} detections, "
+                    f"direction: {event.journey.movement_direction} ({event.journey.direction_confidence:.2f})"
                 )
                 
                 # Save to database only if enabled
@@ -346,9 +333,7 @@ class DiagnosticsViewer:
         # Start with original frame
         display_frame = frame.copy()
         
-        # Layer 1: Lane boundaries (if enabled)
-        if self.state.show_lanes:
-            display_frame = self._draw_lane_boundaries(display_frame)
+        # Layer 1: Lane boundaries removed - no more static lane visualization
         
         # Layer 2: Raw detections (lighter overlay)
         if raw_detections:
@@ -370,35 +355,7 @@ class DiagnosticsViewer:
         
         return display_frame
 
-    def _draw_lane_boundaries(self, frame: NDArray) -> NDArray:
-        """Draw lane boundary lines from calibration data."""
-        if not hasattr(self.lane_analyzer, 'lane_boundaries') or not self.lane_analyzer.lane_boundaries:
-            return frame
-        
-        # Draw lane boundary lines as horizontal lines
-        frame_width = frame.shape[1]
-        
-        for i, boundary_y in enumerate(self.lane_analyzer.lane_boundaries):
-            cv2.line(frame, (0, boundary_y), (frame_width, boundary_y),
-                    self.COLORS['lane_boundary'], 2)
-        
-        # Draw lane numbers and directions
-        if len(self.lane_analyzer.lane_boundaries) > 1:
-            for i in range(len(self.lane_analyzer.lane_boundaries) - 1):
-                top_y = self.lane_analyzer.lane_boundaries[i]
-                bottom_y = self.lane_analyzer.lane_boundaries[i + 1]
-                lane_center_y = (top_y + bottom_y) // 2
-                
-                direction = self.lane_analyzer.lane_directions.get(i, "unknown")
-                label = f"Lane {i} ({direction})"
-                
-                # Text with shadow for better visibility
-                cv2.putText(frame, label, (12, lane_center_y + 2),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.COLORS['text_shadow'], 3)
-                cv2.putText(frame, label, (10, lane_center_y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.COLORS['lane_text'], 2)
-        
-        return frame
+    # _draw_lane_boundaries() method removed - no more static lane visualization
 
     def _draw_raw_detections(self, frame: NDArray, detections: List[DetectionResult]) -> NDArray:
         """Draw raw detections with lighter overlay."""
@@ -559,9 +516,11 @@ class DiagnosticsViewer:
             status = "PAUSED" if self.state.paused else "RESUMED"
             logger.info(f"Processing {status}")
         
-        elif key == ord('l'):
-            self.state.show_lanes = not self.state.show_lanes
-            logger.info(f"Lane display {'ON' if self.state.show_lanes else 'OFF'}")
+        elif key == ord('r'):
+            # 'r' for reset tracking statistics
+            tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
+            logger.info(f"Current tracking stats: {tracking_stats}")
+            # Could add functionality to reset stats here if needed
         
         elif key == ord('t'):
             self.state.show_track_ids = not self.state.show_track_ids
@@ -580,16 +539,19 @@ class DiagnosticsViewer:
         """Display keyboard control help in terminal."""
         help_text = """
     ╔══════════════════════════════════════════════════════════════╗
-    ║                DIAGNOSTICS VIEWER CONTROLS                   ║
+    ║           DIAGNOSTICS VIEWER CONTROLS (REFACTORED)          ║
     ╠══════════════════════════════════════════════════════════════╣
     ║  'q' - Quit application                                      ║
     ║  'd' - Toggle database saving (ON/OFF)                      ║
     ║  'c' - Toggle candidate image saving (ON/OFF)               ║
     ║  'p' - Pause/Resume processing                               ║
-    ║  'l' - Toggle lane boundary display                          ║
+    ║  'r' - Show current tracking statistics                      ║
     ║  't' - Toggle track ID display                               ║
     ║  'f' - Toggle confidence display                             ║
     ║  'h' - Show this help again                                  ║
+    ║                                                              ║
+    ║  🎯 NEW: Dynamic direction detection (no lane calibration)  ║
+    ║  📊 Enhanced journey analytics with movement tracking       ║
     ╚══════════════════════════════════════════════════════════════╝
         """
         print(help_text)

@@ -15,34 +15,51 @@ from backend.detection_models import DetectionResult, VehicleType
 
 @dataclass(frozen=True)
 class VehicleJourney:
-    """Essential vehicle journey data for database storage.
+    """Enhanced vehicle journey data with dynamic direction detection and movement analytics.
 
-    Simple representation of a vehicle journey from entry to exit
-    for MVP requirements without YAGNI analytics.
+    Position-based journey representation without static lane dependencies,
+    featuring dynamic movement analysis and unique journey identifiers.
     """
-    track_id: int
+    # Unique identifiers
+    track_id: int  # ByteTrack ID (can be recycled)
+    journey_id: str  # Global unique ID (JOURNEY_000001)
+    
+    # Basic data
     vehicle_type: VehicleType
     entry_timestamp: float
     exit_timestamp: float | None
-    entry_lane: int | None
-    exit_lane: int | None
-    movement_direction: str | None
+    journey_duration_seconds: float
+    
+    # Position-based data (replaces lane data)
+    entry_position: tuple[int, int]  # Entry centroid (x, y)
+    exit_position: tuple[int, int]   # Exit centroid (x, y)
+    movement_direction: str | None   # Dynamic: "left", "right", "stationary"
+    direction_confidence: float      # 0.0-1.0 confidence in direction
+    
+    # Movement analytics
+    total_movement_pixels: float     # Total distance traveled
+    average_speed_pixels_per_second: float
+    displacement_vector: tuple[float, float]  # (dx, dy) overall displacement
+    
+    # Essential metrics
     total_detections: int
     best_confidence: float
     best_bbox: tuple[int, int, int, int]
     best_detection_timestamp: float
-    journey_duration_seconds: float
 
     def to_api_format(self) -> dict[str, Any]:
-        """Convert journey to API v2.3 compatible format for final reporting."""
+        """Convert journey to API v2.3 compatible format with enhanced analytics."""
         return {
-            "eventId": f"journey_{self.track_id}",
+            "eventId": f"journey_{self.journey_id}",
             "timestamp": self.exit_timestamp or self.entry_timestamp,
-            "vehicleId": f"vehicle_{self.track_id}",
+            "vehicleId": self.journey_id,
             "vehicleType": self.vehicle_type.value,
             "movement": {
                 "direction": self.movement_direction,
-                "lane": self.exit_lane or self.entry_lane
+                "directionConfidence": self.direction_confidence,
+                "entryPosition": {"x": self.entry_position[0], "y": self.entry_position[1]},
+                "exitPosition": {"x": self.exit_position[0], "y": self.exit_position[1]},
+                "displacement": {"dx": self.displacement_vector[0], "dy": self.displacement_vector[1]}
             },
             "position": {
                 "boundingBox": {
@@ -55,15 +72,18 @@ class VehicleJourney:
             "analytics": {
                 "confidence": self.best_confidence,
                 "journeyDurationSeconds": self.journey_duration_seconds,
-                "totalDetections": self.total_detections
+                "totalDetections": self.total_detections,
+                "totalMovementPixels": self.total_movement_pixels,
+                "averageSpeedPixelsPerSecond": self.average_speed_pixels_per_second
             }
         }
 
 
 @dataclass(frozen=True)
 class VehicleEvent(ABC):
-    """Base class for all vehicle lifecycle events."""
+    """Base class for all vehicle lifecycle events with unique journey identifiers."""
     track_id: int
+    journey_id: str
     timestamp: float
     vehicle_type: VehicleType
 
@@ -75,26 +95,26 @@ class VehicleEvent(ABC):
 
 @dataclass(frozen=True)
 class VehicleEntered(VehicleEvent):
-    """Event: New vehicle entered the tracking area.
+    """Event: New vehicle entered the tracking area with unique journey ID.
     
     Triggered when ByteTrack creates a new track ID for a vehicle.
-    Used for logging and initial system notifications.
+    Used for logging and initial system notifications with dynamic direction tracking.
     """
     detection: DetectionResult
-    lane: int | None
-    direction: str | None
 
     def to_websocket_format(self) -> dict[str, Any]:
         """Convert to WebSocket format for real-time notifications."""
         return {
             "type": "vehicle_entered",
-            "eventId": f"enter_{self.track_id}_{int(self.timestamp)}",
+            "eventId": f"enter_{self.journey_id}_{int(self.timestamp)}",
             "timestamp": self.timestamp,
-            "vehicleId": f"vehicle_{self.track_id}",
+            "vehicleId": self.journey_id,
+            "trackId": self.track_id,
             "vehicleType": self.vehicle_type.value,
             "movement": {
-                "direction": self.direction,
-                "lane": self.lane
+                "direction": None,  # Direction will be determined dynamically
+                "directionConfidence": 0.0,
+                "entryPosition": {"x": self.detection.centroid[0], "y": self.detection.centroid[1]}
             },
             "position": {
                 "boundingBox": {
@@ -106,34 +126,37 @@ class VehicleEntered(VehicleEvent):
             },
             "analytics": {
                 "confidence": self.detection.confidence,
-                "isNewVehicle": True
+                "isNewVehicle": True,
+                "journeyStarted": True
             }
         }
 
 
 @dataclass(frozen=True)
 class VehicleUpdated(VehicleEvent):
-    """Event: Vehicle position/state updated - for real-time WebSocket.
+    """Event: Vehicle position/state updated with dynamic direction analysis.
     
     Triggered periodically for active vehicles to provide real-time
-    position updates to connected frontend clients.
+    position updates and dynamic direction analysis to connected frontend clients.
     """
     detection: DetectionResult
-    lane: int | None
-    direction: str | None
+    movement_direction: str | None
+    direction_confidence: float
     total_detections_so_far: int
     current_confidence: float
 
     def to_websocket_format(self) -> dict[str, Any]:
-        """Convert to API v2.3 compatible WebSocket event."""
+        """Convert to enhanced WebSocket event with dynamic direction data."""
         return {
-            "eventId": f"update_{self.track_id}_{int(self.timestamp)}",
+            "eventId": f"update_{self.journey_id}_{int(self.timestamp)}",
             "timestamp": self.timestamp,
-            "vehicleId": f"vehicle_{self.track_id}",
+            "vehicleId": self.journey_id,
+            "trackId": self.track_id,
             "vehicleType": self.vehicle_type.value,
             "movement": {
-                "direction": self.direction,
-                "lane": self.lane
+                "direction": self.movement_direction,
+                "directionConfidence": self.direction_confidence,
+                "currentPosition": {"x": self.detection.centroid[0], "y": self.detection.centroid[1]}
             },
             "vehicleColor": {
                 "hex": None,  # Not implemented yet
@@ -150,7 +173,8 @@ class VehicleUpdated(VehicleEvent):
             "analytics": {
                 "confidence": self.current_confidence,
                 "estimatedSpeedKph": None,  # Not implemented yet
-                "detectionsCount": self.total_detections_so_far
+                "detectionsCount": self.total_detections_so_far,
+                "dynamicDirectionAnalysis": True
             }
         }
 
@@ -166,19 +190,28 @@ class VehicleExited(VehicleEvent):
     exit_reason: str  # "lost_track", "boundary_exit", "low_confidence"
 
     def to_websocket_format(self) -> dict[str, Any]:
-        """Convert to WebSocket format for exit notifications."""
+        """Convert to WebSocket format for comprehensive journey completion notifications."""
         return {
             "type": "vehicle_exited",
-            "eventId": f"exit_{self.track_id}_{int(self.timestamp)}",
+            "eventId": f"exit_{self.journey_id}_{int(self.timestamp)}",
             "timestamp": self.timestamp,
-            "vehicleId": f"vehicle_{self.track_id}",
+            "vehicleId": self.journey_id,
+            "trackId": self.track_id,
             "vehicleType": self.vehicle_type.value,
             "exitReason": self.exit_reason,
             "journeySummary": {
                 "duration": self.journey.journey_duration_seconds,
                 "totalDetections": self.journey.total_detections,
-                "entryLane": self.journey.entry_lane,
-                "exitLane": self.journey.exit_lane
+                "entryPosition": {"x": self.journey.entry_position[0], "y": self.journey.entry_position[1]},
+                "exitPosition": {"x": self.journey.exit_position[0], "y": self.journey.exit_position[1]},
+                "movementDirection": self.journey.movement_direction,
+                "directionConfidence": self.journey.direction_confidence,
+                "totalMovementPixels": self.journey.total_movement_pixels,
+                "averageSpeedPixelsPerSecond": self.journey.average_speed_pixels_per_second,
+                "displacement": {
+                    "dx": self.journey.displacement_vector[0], 
+                    "dy": self.journey.displacement_vector[1]
+                }
             }
         }
 

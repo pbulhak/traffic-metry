@@ -41,90 +41,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class LaneAnalyzer:
-    """Analyzes vehicle positions and assigns lanes based on calibration data."""
-
-    def __init__(self, lanes_config: object | None) -> None:
-        """Initialize lane analyzer with calibration configuration.
-
-        Args:
-            lanes_config: Lane configuration from calibration, or None if not calibrated
-        """
-        self.lanes_config = lanes_config
-        self.lane_boundaries: list[int] = []
-        self.lane_directions: dict[int, str] = {}
-
-        if lanes_config and hasattr(lanes_config, "lines") and hasattr(lanes_config, "directions"):
-            self._calculate_lane_boundaries()
-            self.lane_directions = dict(lanes_config.directions)
-            logger.info(f"Lane analyzer initialized with {len(self.lane_boundaries) - 1} lanes")
-        else:
-            logger.warning("No valid calibration data - lane assignment will be disabled")
-
-    def _calculate_lane_boundaries(self) -> None:
-        """Calculate lane boundaries from calibration lines.
-
-        For horizontal lanes, we use Y-coordinates of the lines to define boundaries.
-        Lines are sorted by Y-coordinate to create lane regions.
-        """
-        if not self.lanes_config or not hasattr(self.lanes_config, "lines"):
-            return
-
-        # Extract Y-coordinates from calibration lines (horizontal lanes)
-        y_coordinates = [(y1 + y2) // 2 for _, y1, _, y2 in self.lanes_config.lines]
-
-        # Sort Y-coordinates to create lane boundaries
-        self.lane_boundaries = sorted(y_coordinates)
-        logger.debug(f"Lane boundaries calculated: {self.lane_boundaries}")
-
-    def assign_lane(self, detection: DetectionResult) -> tuple[int | None, str | None]:
-        """Assign lane number and direction to a vehicle detection.
-
-        Args:
-            detection: Vehicle detection result
-
-        Returns:
-            Tuple of (lane_number, direction) or (None, None) if assignment fails
-        """
-        if not self.lane_boundaries:
-            logger.debug("No lane boundaries available - returning None")
-            return None, None
-
-        # Get vehicle centroid Y-coordinate (horizontal lanes)
-        vehicle_y = detection.centroid[1]
-
-        # Find which lane the vehicle belongs to
-        lane_number = self._find_lane_for_y_coordinate(vehicle_y)
-
-        if lane_number is not None:
-            direction = self.lane_directions.get(lane_number, "stationary")
-            logger.debug(
-                f"Vehicle at Y={vehicle_y} assigned to lane {lane_number}, direction {direction}"
-            )
-            return lane_number, direction
-
-        logger.debug(f"Vehicle at Y={vehicle_y} could not be assigned to any lane")
-        return None, None
-
-    def _find_lane_for_y_coordinate(self, y: int) -> int | None:
-        """Find lane number for given Y coordinate.
-
-        Args:
-            y: Y-coordinate of vehicle centroid
-
-        Returns:
-            Lane number (0-based) or None if outside all lanes
-        """
-        if len(self.lane_boundaries) < 2:
-            return None
-
-        for i in range(len(self.lane_boundaries) - 1):
-            top_y = self.lane_boundaries[i]
-            bottom_y = self.lane_boundaries[i + 1]
-            if top_y <= y < bottom_y:
-                return i  # Zwraca indeks pasa (0, 1, ...)
-
-        return None  # Pojazd jest poza wszystkimi zdefiniowanymi pasami
+# LaneAnalyzer class removed - replaced with dynamic direction detection
+# See backend/direction_analyzer.py for the new approach
 
 
 
@@ -316,7 +234,7 @@ class TrafficMetryProcessor:
                 frame_rate=30,                     # Video frame rate for prediction algorithms
                 update_interval_seconds=1.0        # WebSocket update interval
             )
-            self.lane_analyzer = LaneAnalyzer(config.lanes)
+            # LaneAnalyzer removed - dynamic direction detection now handled in VehicleTrackingManager
             self.candidate_saver = CandidateSaver(Path("data/unlabeled_images"), config.model)
             self.event_database = EventDatabase(config.database)
 
@@ -370,15 +288,9 @@ class TrafficMetryProcessor:
                         raw_detections = self.detector.detect_vehicles(frame)
                         self.detection_count += len(raw_detections)
 
-                        # Assign lanes to detections before tracking
-                        lane_assignments = {}
-                        for detection in raw_detections:
-                            lane, direction = self.lane_analyzer.assign_lane(detection)
-                            lane_assignments[detection.detection_id] = (lane, direction)
-
-                        # 🎯 EVENT-DRIVEN TRACKING: Update tracking and get lifecycle events
+                        # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection
                         tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                            raw_detections, lane_assignments
+                            raw_detections
                         )
 
                         # Process vehicle lifecycle events (not detections!)
@@ -428,19 +340,20 @@ class TrafficMetryProcessor:
         """
         for event in vehicle_events:
             if isinstance(event, VehicleEntered):
-                # Vehicle entered tracking area
+                # Vehicle entered tracking area with dynamic direction detection
                 logger.info(
-                    f"🚗 Vehicle {event.track_id} ({event.vehicle_type}) entered in lane {event.lane} "
-                    f"moving {event.direction}"
+                    f"🚗 Vehicle {event.journey_id} (Track {event.track_id}) ({event.vehicle_type}) entered at "
+                    f"position ({event.detection.centroid[0]}, {event.detection.centroid[1]})"
                 )
 
                 # Future: Send WebSocket notification for vehicle entry
                 # await self._publish_websocket_event(event.to_websocket_format())
 
             elif isinstance(event, VehicleUpdated):
-                # Vehicle position updated - for real-time WebSocket
+                # Vehicle position updated with dynamic direction analysis
                 logger.debug(
-                    f"📍 Vehicle {event.track_id} updated: lane {event.lane}, "
+                    f"📍 Vehicle {event.journey_id} (Track {event.track_id}) updated: "
+                    f"direction {event.movement_direction} ({event.direction_confidence:.2f}), "
                     f"confidence {event.current_confidence:.2f}, "
                     f"detections {event.total_detections_so_far}"
                 )
