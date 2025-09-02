@@ -22,11 +22,12 @@ from pathlib import Path
 
 from numpy.typing import NDArray
 
-from backend.camera_stream import CameraConnectionError, CameraStream
+from backend.async_components import AsyncCameraStream, AsyncVehicleDetector
+from backend.camera_stream import CameraConnectionError
 from backend.candidate_saver import EventDrivenCandidateSaver
 from backend.config import Settings, get_config
 from backend.database import DatabaseError, EventDatabase
-from backend.detector import DetectionError, ModelLoadError, VehicleDetector
+from backend.detector import DetectionError, ModelLoadError
 from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
@@ -63,8 +64,9 @@ class TrafficMetryProcessor:
         logger.info("Initializing TrafficMetry components...")
 
         try:
-            self.camera = CameraStream(config.camera)
-            self.detector = VehicleDetector(config.model)
+            # Initialize async components with thread pools
+            self.camera = AsyncCameraStream(config.camera, max_workers=2)
+            self.detector = AsyncVehicleDetector(config.model, max_workers=3)
 
             # Initialize database first to get journey continuation
             self.event_database = EventDatabase(config.database)
@@ -158,17 +160,22 @@ class TrafficMetryProcessor:
             await self.event_database.connect()
             logger.info("Database connection established")
 
+            # Initialize async detector
+            await self.detector.initialize()
+            logger.info("Async vehicle detector initialized")
+
             # Initialize tracking manager with journey ID continuation
             await self._initialize_tracking_manager()
             logger.info("Vehicle tracking manager initialized with journey ID continuation")
 
-            with self.camera:
-                logger.info("Camera connection established")
+            # Connect to async camera stream
+            async with self.camera:
+                logger.info("Async camera stream connected")
 
                 while self.running:
                     try:
-                        # Capture frame
-                        frame = self.camera.get_frame()
+                        # Capture frame asynchronously
+                        frame = await self.camera.get_frame()
                         if frame is None:
                             logger.warning("No frame received from camera")
                             await asyncio.sleep(0.1)
@@ -176,8 +183,8 @@ class TrafficMetryProcessor:
 
                         self.frame_count += 1
 
-                        # Detect vehicles (raw detections from YOLO)
-                        raw_detections = self.detector.detect_vehicles(frame)
+                        # Detect vehicles asynchronously (raw detections from YOLO)
+                        raw_detections = await self.detector.detect_vehicles(frame)
                         self.detection_count += len(raw_detections)
 
                         # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection

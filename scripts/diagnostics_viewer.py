@@ -48,8 +48,8 @@ from backend.detector import DetectionError, ModelLoadError, VehicleDetector
 from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
-# Import classes from main.py (temporary until moved to backend modules)
-from main import CandidateSaver
+# Import EventDrivenCandidateSaver from backend modules
+from backend.candidate_saver import EventDrivenCandidateSaver
 
 # Configure diagnostics logging
 logging.basicConfig(
@@ -144,9 +144,9 @@ class DiagnosticsViewer:
             # LaneAnalyzer removed - dynamic direction detection now handled in VehicleTrackingManager
 
             # Candidate saver
-            self.candidate_saver = CandidateSaver(
+            self.candidate_saver = EventDrivenCandidateSaver(
                 output_dir=Path("data/unlabeled_images"),
-                model_config=self.config.model
+                storage_limit_gb=self.config.model.candidate_storage_limit_gb
             )
 
             # Event database
@@ -228,15 +228,15 @@ class DiagnosticsViewer:
 
                             # Update tracking with dynamic direction detection
                             tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                                raw_detections
+                                raw_detections, current_frame=frame
                             )
 
                             # Process events (database, logging)
                             await self._process_vehicle_events(vehicle_events)
 
-                            # Save candidates if enabled
+                            # Handle candidate saving through event system
                             if self.state.candidates_enabled:
-                                await self._save_candidates(frame, tracked_detections)
+                                await self._handle_candidate_events(vehicle_events, frame)
 
                             # Store frame for pause mode
                             self.state.last_frame = frame.copy()
@@ -309,16 +309,21 @@ class DiagnosticsViewer:
                     except DatabaseError as e:
                         logger.error(f"Database error: {e}")
 
-    async def _save_candidates(self, frame: NDArray, detections: list[DetectionResult]) -> None:
-        """Save candidate images if enabled."""
-        for detection in detections:
-            if detection.confidence >= self.config.model.confidence_threshold:
-                try:
-                    saved_path = self.candidate_saver.save_candidate(frame, detection)
+    async def _handle_candidate_events(self, vehicle_events: list, frame: NDArray) -> None:
+        """Handle candidate saving through the new event-driven system."""
+        for event in vehicle_events:
+            try:
+                if isinstance(event, VehicleEntered):
+                    self.candidate_saver.handle_vehicle_entered(event, frame)
+                elif isinstance(event, VehicleUpdated):
+                    self.candidate_saver.handle_vehicle_updated(event, frame)
+                elif isinstance(event, VehicleExited):
+                    saved_path = self.candidate_saver.handle_vehicle_exited(event)
                     if saved_path:
                         self.state.candidates_saved += 1
-                except Exception as e:
-                    logger.error(f"Candidate saving error: {e}")
+                        logger.debug(f"Candidate image saved: {saved_path.name}")
+            except Exception as e:
+                logger.error(f"Candidate saving error: {e}")
 
     async def _create_visualization(
         self,

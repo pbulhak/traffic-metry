@@ -93,7 +93,8 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
     """Extended TrafficMetryProcessor with WebSocket event publishing.
 
     This class extends the original TrafficMetryProcessor to publish
-    events to WebSocket clients via the EventPublisher.
+    events to WebSocket clients via the EventPublisher using the new
+    event-driven architecture.
     """
 
     def __init__(self, config: Settings) -> None:
@@ -105,36 +106,31 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
         super().__init__(config)
         self.publishing_stats = {"events_published": 0, "publishing_errors": 0}
 
-    async def _process_detection(self, frame: Any, detection: Any) -> dict[str, Any]:
-        """Process detection with WebSocket event publishing.
-
-        This method extends the parent _process_detection to also
-        publish events to WebSocket clients.
+    async def _process_vehicle_events(self, vehicle_events: list) -> None:
+        """Override parent method to add WebSocket event publishing.
 
         Args:
-            frame: Video frame containing the detection
-            detection: DetectionResult object
+            vehicle_events: List of VehicleEvent objects (VehicleEntered, VehicleUpdated, VehicleExited)
         """
-        try:
-            # Call parent processing and get the created event
-            event = await super()._process_detection(frame, detection)
+        # Call parent processing first
+        await super()._process_vehicle_events(vehicle_events)
 
-            # Only publish if we got a valid event (not empty dict from error case)
-            if event:
-                # Publish to WebSocket clients
-                await self._publish_event(event)
+        # Then publish events to WebSocket clients
+        for event in vehicle_events:
+            try:
+                # Convert event to WebSocket format and publish
+                websocket_event = event.to_websocket_format()
+                if websocket_event:
+                    await self._publish_event(websocket_event)
 
-            return event
-
-        except Exception as e:
-            logger.error(f"Error in extended _process_detection: {e}")
-            return {}
+            except Exception as e:
+                logger.error(f"Error processing event {type(event).__name__} for publishing: {e}")
 
     async def _publish_event(self, event: dict[str, Any]) -> None:
         """Publish event to WebSocket clients.
 
         Args:
-            event: Vehicle event in API v2.3 format
+            event: Vehicle event in WebSocket format
         """
         try:
             success = await event_publisher.publish_event(event)
