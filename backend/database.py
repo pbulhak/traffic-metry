@@ -111,58 +111,35 @@ class EventDatabase:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
 
         try:
-            # Legacy table for backward compatibility (detection-based events)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS vehicle_events (
-                    event_id TEXT PRIMARY KEY,           -- event["eventId"]
-                    timestamp REAL NOT NULL,             -- event["timestamp"] as Unix timestamp
-                    vehicle_id TEXT NOT NULL,            -- event["vehicleId"]
-                    vehicle_type TEXT NOT NULL,          -- event["vehicleType"]
-                    direction TEXT,                      -- event["movement"]["direction"]
-                    lane INTEGER,                        -- event["movement"]["lane"]
-                    x1 INTEGER NOT NULL,                 -- event["position"]["boundingBox"]["x1"]
-                    y1 INTEGER NOT NULL,                 -- event["position"]["boundingBox"]["y1"]
-                    x2 INTEGER NOT NULL,                 -- event["position"]["boundingBox"]["x2"]
-                    y2 INTEGER NOT NULL,                 -- event["position"]["boundingBox"]["y2"]
-                    confidence REAL NOT NULL,            -- event["analytics"]["confidence"]
-                    created_at REAL NOT NULL DEFAULT (unixepoch())
-                )
-            """)
 
-            # Simplified journey table for MVP requirements
+            # Clean journey table with dedicated position columns
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS vehicle_journeys (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     track_id INTEGER NOT NULL,           -- ByteTrack tracking ID
-                    journey_id TEXT,                     -- Global unique journey ID
+                    journey_id TEXT NOT NULL,            -- Global unique journey ID
                     vehicle_type TEXT NOT NULL,          -- VehicleType enum value
                     entry_timestamp REAL NOT NULL,      -- When vehicle entered tracking
                     exit_timestamp REAL,                -- When vehicle exited tracking
-                    entry_position_json TEXT,           -- JSON [x,y] entry position
-                    exit_position_json TEXT,            -- JSON [x,y] exit position
+                    
+                    -- Clean position data (dedicated INTEGER columns)
+                    entry_pos_x INTEGER NOT NULL,       -- Entry position X coordinate
+                    entry_pos_y INTEGER NOT NULL,       -- Entry position Y coordinate
+                    exit_pos_x INTEGER,                 -- Exit position X coordinate
+                    exit_pos_y INTEGER,                 -- Exit position Y coordinate
+                    
                     movement_direction TEXT,            -- Dynamic movement direction
-                    direction_confidence REAL,          -- Direction confidence (0-1)
-                    total_movement_pixels REAL,         -- Total distance traveled
-                    average_speed_pixels_per_second REAL, -- Average speed
-                    displacement_vector_json TEXT,      -- JSON [dx,dy] displacement
                     total_detections INTEGER NOT NULL,  -- Total detections for this vehicle
                     best_confidence REAL NOT NULL,      -- Highest confidence detection
                     best_bbox_json TEXT NOT NULL,       -- JSON [x1,y1,x2,y2] of best detection
                     journey_duration_seconds REAL NOT NULL, -- Total journey time
                     best_detection_timestamp REAL NOT NULL, -- Timestamp of best detection
                     
-                    -- Legacy columns (kept for backward compatibility but can be NULL)
-                    entry_lane INTEGER,                 -- Lane where vehicle entered (legacy)
-                    exit_lane INTEGER,                  -- Lane where vehicle exited (legacy)
-                    
                     created_at REAL NOT NULL DEFAULT (unixepoch())
                 )
             """)
 
             # Create performance indexes for long-term queries
-            # Legacy table indexes
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON vehicle_events(timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_vehicle_id ON vehicle_events(vehicle_id)")
 
             # Journey table indexes for efficient analytics queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_entry_timestamp ON vehicle_journeys(entry_timestamp)")
@@ -170,14 +147,12 @@ class EventDatabase:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_vehicle_type ON vehicle_journeys(vehicle_type)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_track_id ON vehicle_journeys(track_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_duration ON vehicle_journeys(journey_duration_seconds)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_entry_lane ON vehicle_journeys(entry_lane)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_exit_lane ON vehicle_journeys(exit_lane)")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_vehicle_type ON vehicle_events(vehicle_type)"
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON vehicle_events(created_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_direction ON vehicle_events(direction)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_lane ON vehicle_events(lane)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_journey_id ON vehicle_journeys(journey_id)")
+
+            # Position-based indexes for spatial queries
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_position ON vehicle_journeys(entry_pos_x, entry_pos_y)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_exit_position ON vehicle_journeys(exit_pos_x, exit_pos_y)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_movement_direction ON vehicle_journeys(movement_direction)")
 
             # Set performance pragmas optimized for write-heavy workload
             conn.execute("PRAGMA journal_mode=WAL")
@@ -210,120 +185,7 @@ class EventDatabase:
             except Exception as e:
                 logger.error(f"Error closing database connection: {e}")
 
-    async def save_event(self, event: dict) -> bool:
-        """Save vehicle event from EventGenerator.create_vehicle_event().
 
-        Args:
-            event: Event dictionary in API v2.3 format from EventGenerator
-
-        Returns:
-            True if event was saved successfully, False otherwise
-
-        Raises:
-            EventValidationError: If event data is invalid
-            DatabaseConnectionError: If database operation fails
-        """
-        if not self._connection:
-            raise DatabaseConnectionError(
-                "Database not connected. Call connect() first.", db_path=str(self.db_path)
-            )
-
-        try:
-            # Validate event structure
-            required_keys = [
-                "eventId",
-                "timestamp",
-                "vehicleId",
-                "vehicleType",
-                "movement",
-                "position",
-                "analytics",
-            ]
-            for key in required_keys:
-                if key not in event:
-                    raise EventValidationError(f"Missing required event key: {key}")
-
-            # Extract data from nested event structure
-            movement = event["movement"]
-            position = event["position"]["boundingBox"]
-            analytics = event["analytics"]
-
-            # Validate nested structure
-            if "direction" not in movement or "lane" not in movement:
-                raise EventValidationError("Invalid movement data in event")
-            if not all(k in position for k in ["x1", "y1", "x2", "y2"]):
-                raise EventValidationError("Invalid position data in event")
-            if "confidence" not in analytics:
-                raise EventValidationError("Invalid analytics data in event")
-
-            # Convert timestamp string to Unix timestamp for storage
-            if isinstance(event["timestamp"], str):
-                # Parse ISO format timestamp to Unix timestamp
-                dt = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
-                unix_timestamp = dt.timestamp()
-            else:
-                # Assume it's already a Unix timestamp
-                unix_timestamp = float(event["timestamp"])
-
-            # Prepare data for database insertion
-            event_data = (
-                event["eventId"],
-                unix_timestamp,
-                event["vehicleId"],
-                event["vehicleType"],
-                movement["direction"],
-                movement["lane"],
-                position["x1"],
-                position["y1"],
-                position["x2"],
-                position["y2"],
-                analytics["confidence"],
-            )
-
-            # Thread-safe database save operation
-            async with self._lock:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None, self._save_event_sync, event_data, self._connection
-                )
-                self.saved_count += 1
-
-            logger.debug(f"Event {event['eventId']} permanently archived to database")
-            return True
-
-        except (EventValidationError, DatabaseConnectionError):
-            # Re-raise validation and connection errors
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error saving event {event.get('eventId', 'unknown')}: {e}")
-            return False
-
-    def _save_event_sync(self, event_data: tuple, conn: sqlite3.Connection) -> None:
-        """Synchronous database save operation (for executor).
-
-        Args:
-            event_data: Tuple of event data for database insertion
-            conn: SQLite connection to use for the operation
-
-        Raises:
-            DatabaseConnectionError: If database operation fails
-        """
-        try:
-            conn.execute(
-                """
-                INSERT INTO vehicle_events
-                (event_id, timestamp, vehicle_id, vehicle_type, direction,
-                 lane, x1, y1, x2, y2, confidence)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                event_data,
-            )
-            conn.commit()
-
-        except sqlite3.Error as e:
-            raise DatabaseConnectionError(
-                f"Failed to save event to database: {e}", db_path=str(self.db_path)
-            ) from e
 
     async def save_vehicle_journey(self, journey: Any) -> bool:
         """Save complete vehicle journey to database.
@@ -343,23 +205,24 @@ class EventDatabase:
             )
 
         try:
-            # Prepare enhanced journey data for database storage (position-based)
+            # Prepare clean journey data for database storage (dedicated position columns)
             journey_data = (
                 journey.track_id,
                 journey.journey_id,
                 journey.vehicle_type.value,
                 journey.entry_timestamp,
                 journey.exit_timestamp,
-                json.dumps(journey.entry_position),   # Store position as JSON
-                json.dumps(journey.exit_position),    # Store position as JSON
+
+                # Clean position data as separate integers
+                journey.entry_pos_x,
+                journey.entry_pos_y,
+                journey.exit_pos_x,
+                journey.exit_pos_y,
+
                 journey.movement_direction,
-                journey.direction_confidence,
-                journey.total_movement_pixels,
-                journey.average_speed_pixels_per_second,
-                json.dumps(journey.displacement_vector),  # Store as JSON
                 journey.total_detections,
                 journey.best_confidence,
-                json.dumps(journey.best_bbox),       # Store bbox as JSON array
+                json.dumps(journey.best_bbox),       # Only bbox remains as JSON
                 journey.journey_duration_seconds,
                 journey.best_detection_timestamp,
             )
@@ -397,12 +260,11 @@ class EventDatabase:
             conn.execute(
                 """
                 INSERT INTO vehicle_journeys
-                (track_id, journey_id, vehicle_type, entry_timestamp, exit_timestamp, 
-                 entry_position_json, exit_position_json, movement_direction, 
-                 direction_confidence, total_movement_pixels, average_speed_pixels_per_second,
-                 displacement_vector_json, total_detections, best_confidence,
+                (track_id, journey_id, vehicle_type, entry_timestamp, exit_timestamp,
+                 entry_pos_x, entry_pos_y, exit_pos_x, exit_pos_y,
+                 movement_direction, total_detections, best_confidence,
                  best_bbox_json, journey_duration_seconds, best_detection_timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 journey_data,
             )
@@ -413,86 +275,7 @@ class EventDatabase:
                 f"Failed to save journey to database: {e}", db_path=str(self.db_path)
             ) from e
 
-    async def get_recent_events(self, limit: int = 100) -> list[dict]:
-        """Retrieve recent events in original API v2.3 format.
 
-        Args:
-            limit: Maximum number of events to retrieve
-
-        Returns:
-            List of event dictionaries in API format with proper ISO timestamps
-
-        Raises:
-            DatabaseConnectionError: If database query fails
-        """
-        if not self._connection:
-            raise DatabaseConnectionError(
-                "Database not connected. Call connect() first.", db_path=str(self.db_path)
-            )
-
-        try:
-            loop = asyncio.get_event_loop()
-            events = await loop.run_in_executor(
-                None, self._get_events_sync, limit, self._connection
-            )
-
-            # Convert database rows back to API v2.3 format with proper timestamp formatting
-            formatted_events = []
-            for row in events:
-                # Convert Unix timestamp back to ISO format string
-                timestamp_iso = datetime.fromtimestamp(row["timestamp"], tz=UTC).isoformat()
-
-                event = {
-                    "eventId": row["event_id"],
-                    "timestamp": timestamp_iso,
-                    "vehicleId": row["vehicle_id"],
-                    "vehicleType": row["vehicle_type"],
-                    "movement": {"direction": row["direction"], "lane": row["lane"]},
-                    "vehicleColor": {"hex": None, "name": None},
-                    "position": {
-                        "boundingBox": {
-                            "x1": row["x1"],
-                            "y1": row["y1"],
-                            "x2": row["x2"],
-                            "y2": row["y2"],
-                        }
-                    },
-                    "analytics": {"confidence": row["confidence"], "estimatedSpeedKph": None},
-                }
-                formatted_events.append(event)
-
-            return formatted_events
-
-        except Exception as e:
-            raise DatabaseConnectionError(
-                f"Failed to retrieve events from database: {e}", db_path=str(self.db_path)
-            ) from e
-
-    def _get_events_sync(self, limit: int, conn: sqlite3.Connection) -> list[dict]:
-        """Synchronous database query operation (for executor).
-
-        Args:
-            limit: Maximum number of events to retrieve
-            conn: SQLite connection to use for the operation
-
-        Returns:
-            List of event data as dictionaries
-        """
-        conn.row_factory = sqlite3.Row  # Enable dict-like row access
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT event_id, timestamp, vehicle_id, vehicle_type, direction,
-                   lane, x1, y1, x2, y2, confidence, created_at
-            FROM vehicle_events
-            ORDER BY created_at DESC
-            LIMIT ?
-        """,
-            (limit,),
-        )
-
-        return [dict(row) for row in cursor.fetchall()]
 
     def get_database_stats(self) -> dict[str, Any]:
         """Get database statistics and health information.
@@ -506,39 +289,79 @@ class EventDatabase:
         try:
             cursor = self._connection.cursor()
 
-            # Get record count
-            cursor.execute("SELECT COUNT(*) FROM vehicle_events")
-            record_count = cursor.fetchone()[0]
+            # Get journey count
+            cursor.execute("SELECT COUNT(*) FROM vehicle_journeys")
+            journey_count = cursor.fetchone()[0]
 
-            # Get oldest and newest timestamps
+            # Get oldest and newest journey timestamps
             cursor.execute("""
-                SELECT MIN(created_at) as oldest, MAX(created_at) as newest
-                FROM vehicle_events
+                SELECT MIN(entry_timestamp) as oldest, MAX(exit_timestamp) as newest
+                FROM vehicle_journeys
             """)
             time_range = cursor.fetchone()
 
             # Format timestamps as ISO strings if they exist
-            oldest_event = None
-            newest_event = None
+            oldest_journey = None
+            newest_journey = None
             if time_range[0]:
-                oldest_event = datetime.fromtimestamp(time_range[0], tz=UTC).isoformat()
+                oldest_journey = datetime.fromtimestamp(time_range[0], tz=UTC).isoformat()
             if time_range[1]:
-                newest_event = datetime.fromtimestamp(time_range[1], tz=UTC).isoformat()
+                newest_journey = datetime.fromtimestamp(time_range[1], tz=UTC).isoformat()
 
             # Get database file size
             db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
 
             return {
                 "database_path": str(self.db_path),
-                "record_count": record_count,
+                "journey_count": journey_count,
                 "database_size_bytes": db_size,
                 "database_size_mb": round(db_size / (1024 * 1024), 2),
-                "events_saved": self.saved_count,
-                "oldest_event": oldest_event,
-                "newest_event": newest_event,
-                "preservation_mode": "long_term_archive",  # Indicator of no cleanup
+                "journeys_saved": self.saved_count,
+                "oldest_journey": oldest_journey,
+                "newest_journey": newest_journey,
+                "data_model": "clean_journeys_only",  # Indicator of new clean model
             }
 
         except Exception as e:
             logger.error(f"Failed to get database stats: {e}")
             return {"database_path": str(self.db_path), "error": str(e)}
+
+    async def get_last_journey_id(self) -> int:
+        """Get the last journey counter from database for ID continuation.
+        
+        Returns:
+            Last journey counter number, or 0 if no journeys exist
+        """
+        if not self._connection:
+            logger.warning("Database not connected for get_last_journey_id, returning 0")
+            return 0
+
+        try:
+            def _get_last_id_sync(conn: sqlite3.Connection) -> int:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT journey_id FROM vehicle_journeys 
+                    WHERE journey_id LIKE 'JOURNEY_%' 
+                    ORDER BY id DESC LIMIT 1
+                """)
+                result = cursor.fetchone()
+                if result and result[0]:
+                    # Extract number from "JOURNEY_000123"
+                    try:
+                        journey_id = result[0]
+                        if "_" in journey_id:
+                            counter_str = journey_id.split('_')[-1]
+                            return int(counter_str)
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Failed to parse journey_id '{result[0]}': {e}")
+                return 0
+
+            loop = asyncio.get_event_loop()
+            last_id = await loop.run_in_executor(None, _get_last_id_sync, self._connection)
+
+            logger.info(f"Retrieved last journey ID counter from database: {last_id}")
+            return last_id
+
+        except Exception as e:
+            logger.error(f"Error getting last journey ID from database: {e}")
+            return 0
