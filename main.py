@@ -20,16 +20,15 @@ import sys
 import time
 from pathlib import Path
 
-import cv2
 from numpy.typing import NDArray
 
 from backend.camera_stream import CameraConnectionError, CameraStream
-from backend.config import ModelSettings, Settings, get_config
+from backend.candidate_saver import EventDrivenCandidateSaver
+from backend.config import Settings, get_config
 from backend.database import DatabaseError, EventDatabase
-from backend.detection_models import DetectionResult
 from backend.detector import DetectionError, ModelLoadError, VehicleDetector
 from backend.tracker import VehicleTrackingManager
-from backend.vehicle_events import VehicleEntered, VehicleExited, VehicleUpdated
+from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
 # Configure logging
 logging.basicConfig(
@@ -41,251 +40,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class LaneAnalyzer:
-    """Analyzes vehicle positions and assigns lanes based on calibration data."""
-
-    def __init__(self, lanes_config: object | None) -> None:
-        """Initialize lane analyzer with calibration configuration.
-
-        Args:
-            lanes_config: Lane configuration from calibration, or None if not calibrated
-        """
-        self.lanes_config = lanes_config
-        self.lane_boundaries: list[int] = []
-        self.lane_directions: dict[int, str] = {}
-
-        if lanes_config and hasattr(lanes_config, "lines") and hasattr(lanes_config, "directions"):
-            self._calculate_lane_boundaries()
-            self.lane_directions = dict(lanes_config.directions)
-            logger.info(f"Lane analyzer initialized with {len(self.lane_boundaries) - 1} lanes")
-        else:
-            logger.warning("No valid calibration data - lane assignment will be disabled")
-
-    def _calculate_lane_boundaries(self) -> None:
-        """Calculate lane boundaries from calibration lines.
-
-        For horizontal lanes, we use Y-coordinates of the lines to define boundaries.
-        Lines are sorted by Y-coordinate to create lane regions.
-        """
-        if not self.lanes_config or not hasattr(self.lanes_config, "lines"):
-            return
-
-        # Extract Y-coordinates from calibration lines (horizontal lanes)
-        y_coordinates = [(y1 + y2) // 2 for _, y1, _, y2 in self.lanes_config.lines]
-
-        # Sort Y-coordinates to create lane boundaries
-        self.lane_boundaries = sorted(y_coordinates)
-        logger.debug(f"Lane boundaries calculated: {self.lane_boundaries}")
-
-    def assign_lane(self, detection: DetectionResult) -> tuple[int | None, str | None]:
-        """Assign lane number and direction to a vehicle detection.
-
-        Args:
-            detection: Vehicle detection result
-
-        Returns:
-            Tuple of (lane_number, direction) or (None, None) if assignment fails
-        """
-        if not self.lane_boundaries:
-            logger.debug("No lane boundaries available - returning None")
-            return None, None
-
-        # Get vehicle centroid Y-coordinate (horizontal lanes)
-        vehicle_y = detection.centroid[1]
-
-        # Find which lane the vehicle belongs to
-        lane_number = self._find_lane_for_y_coordinate(vehicle_y)
-
-        if lane_number is not None:
-            direction = self.lane_directions.get(lane_number, "stationary")
-            logger.debug(
-                f"Vehicle at Y={vehicle_y} assigned to lane {lane_number}, direction {direction}"
-            )
-            return lane_number, direction
-
-        logger.debug(f"Vehicle at Y={vehicle_y} could not be assigned to any lane")
-        return None, None
-
-    def _find_lane_for_y_coordinate(self, y: int) -> int | None:
-        """Find lane number for given Y coordinate.
-
-        Args:
-            y: Y-coordinate of vehicle centroid
-
-        Returns:
-            Lane number (0-based) or None if outside all lanes
-        """
-        if len(self.lane_boundaries) < 2:
-            return None
-
-        for i in range(len(self.lane_boundaries) - 1):
-            top_y = self.lane_boundaries[i]
-            bottom_y = self.lane_boundaries[i + 1]
-            if top_y <= y < bottom_y:
-                return i  # Zwraca indeks pasa (0, 1, ...)
-
-        return None  # Pojazd jest poza wszystkimi zdefiniowanymi pasami
-
-
-
-class CandidateSaver:
-    """Saves detected vehicle images as training candidates."""
-
-    def __init__(self, output_dir: Path, model_config: ModelSettings) -> None:
-        """Initialize candidate saver.
-
-        Args:
-            output_dir: Directory to save candidate images
-            model_config: Model configuration with storage settings
-        """
-        self.output_dir = output_dir
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.saved_count = 0
-
-        # Storage management from configuration
-        self.storage_limit_bytes = int(model_config.candidate_storage_limit_gb * 1024**3)
-        self.cleanup_interval = model_config.candidate_cleanup_interval
-        self.cleanup_counter = 0
-
-        logger.info(f"Candidate saver initialized - output directory: {self.output_dir}")
-        logger.info(
-            f"Storage limit: {model_config.candidate_storage_limit_gb:.1f} GB ({self.storage_limit_bytes:,} bytes)"
-        )
-        logger.info(f"Cleanup interval: every {self.cleanup_interval} saves")
-
-    def _get_directory_size_bytes(self) -> int:
-        """Calculate total size of all files in output directory.
-
-        Returns:
-            Total size in bytes, or 0 if directory doesn't exist or is empty
-        """
-        try:
-            if not self.output_dir.exists():
-                return 0
-
-            total_size = 0
-            for file_path in self.output_dir.rglob("*"):
-                if file_path.is_file():
-                    total_size += file_path.stat().st_size
-
-            return total_size
-        except Exception as e:
-            logger.error(f"Error calculating directory size: {e}")
-            return 0
-
-    def _check_and_cleanup_storage(self) -> None:
-        """Check storage usage and cleanup oldest files if limit exceeded."""
-        try:
-            current_size = self._get_directory_size_bytes()
-            if current_size <= self.storage_limit_bytes:
-                logger.debug(
-                    f"Storage within limit: {current_size:,} / {self.storage_limit_bytes:,} bytes"
-                )
-                return
-
-            logger.info(
-                f"Storage limit exceeded: {current_size:,} / {self.storage_limit_bytes:,} bytes - starting cleanup"
-            )
-
-            # Get all image files sorted by modification time (oldest first)
-            image_files = []
-            for file_path in self.output_dir.glob("*.jpg"):
-                if file_path.is_file():
-                    image_files.append((file_path, file_path.stat().st_mtime))
-
-            # Sort by modification time (oldest first)
-            image_files.sort(key=lambda x: x[1])
-
-            # Delete oldest files until we're under limit (with 10% buffer)
-            target_size = int(self.storage_limit_bytes * 0.9)  # Keep 10% buffer
-            deleted_count = 0
-            freed_bytes = 0
-
-            for file_path, _ in image_files:
-                if current_size - freed_bytes <= target_size:
-                    break
-
-                try:
-                    file_size = file_path.stat().st_size
-                    file_path.unlink()  # Delete file
-                    freed_bytes += file_size
-                    deleted_count += 1
-                    logger.debug(f"Deleted old candidate: {file_path.name}")
-                except Exception as e:
-                    logger.warning(f"Failed to delete {file_path}: {e}")
-
-            final_size = current_size - freed_bytes
-            logger.info(
-                f"Cleanup completed: deleted {deleted_count} files, freed {freed_bytes:,} bytes"
-            )
-            logger.info(f"Final storage: {final_size:,} / {self.storage_limit_bytes:,} bytes")
-
-        except Exception as e:
-            logger.error(f"Error during storage cleanup: {e}")
-
-    def save_candidate(self, frame: NDArray, detection: DetectionResult) -> Path | None:
-        """Save vehicle detection as candidate image.
-
-        Args:
-            frame: Source video frame
-            detection: Vehicle detection result
-
-        Returns:
-            Path to saved image or None if saving failed
-        """
-        try:
-            # BOUNDS VALIDATION - ensure coordinates are within frame dimensions
-            frame_height, frame_width = frame.shape[:2]
-
-            # Clamp coordinates to frame boundaries
-            x1 = max(0, min(detection.x1, frame_width - 1))
-            y1 = max(0, min(detection.y1, frame_height - 1))
-            x2 = max(x1 + 1, min(detection.x2, frame_width))  # Ensure x2 > x1
-            y2 = max(y1 + 1, min(detection.y2, frame_height))  # Ensure y2 > y1
-
-            # Log if bounds were adjusted
-            if (x1, y1, x2, y2) != (detection.x1, detection.y1, detection.x2, detection.y2):
-                logger.debug(
-                    f"Adjusted bounds for detection {detection.detection_id}: "
-                    f"({detection.x1},{detection.y1},{detection.x2},{detection.y2}) -> ({x1},{y1},{x2},{y2})"
-                )
-
-            # SAFE CROPPING with validated coordinates
-            vehicle_crop = frame[y1:y2, x1:x2]
-
-            if vehicle_crop.size == 0:
-                logger.warning(
-                    f"Empty crop for detection {detection.detection_id} after bounds validation"
-                )
-                return None
-
-            # Generate filename with metadata
-            timestamp_str = time.strftime(
-                "%Y%m%d_%H%M%S", time.localtime(detection.frame_timestamp)
-            )
-            filename = f"{timestamp_str}_{detection.vehicle_type.value}_{detection.confidence:.2f}_{detection.detection_id[:8]}.jpg"
-            file_path = self.output_dir / filename
-
-            # Save image
-            success = cv2.imwrite(str(file_path), vehicle_crop)
-            if success:
-                self.saved_count += 1
-                logger.debug(f"Saved candidate image: {filename}")
-
-                # CLEANUP TRIGGER - check storage periodically
-                self.cleanup_counter += 1
-                if self.cleanup_counter >= self.cleanup_interval:
-                    self.cleanup_counter = 0
-                    self._check_and_cleanup_storage()
-
-                return file_path
-            else:
-                logger.error(f"Failed to save candidate image: {filename}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Error saving candidate for detection {detection.detection_id}: {e}")
-            return None
+# LaneAnalyzer class removed - replaced with dynamic direction detection
+# See backend/direction_analyzer.py for the new approach
 
 
 class TrafficMetryProcessor:
@@ -309,22 +65,72 @@ class TrafficMetryProcessor:
         try:
             self.camera = CameraStream(config.camera)
             self.detector = VehicleDetector(config.model)
-            self.vehicle_tracking_manager = VehicleTrackingManager(
-                track_activation_threshold=0.5,    # Detection confidence threshold for track activation
-                lost_track_buffer=30,               # Number of frames to buffer when a track is lost
-                minimum_matching_threshold=0.8,    # Threshold for matching tracks with detections
-                frame_rate=30,                     # Video frame rate for prediction algorithms
-                update_interval_seconds=1.0        # WebSocket update interval
-            )
-            self.lane_analyzer = LaneAnalyzer(config.lanes)
-            self.candidate_saver = CandidateSaver(Path("data/unlabeled_images"), config.model)
+
+            # Initialize database first to get journey continuation
             self.event_database = EventDatabase(config.database)
 
-            logger.info("All components initialized successfully")
+            # We'll initialize the tracking manager after database connection
+            self.vehicle_tracking_manager: VehicleTrackingManager | None = None
+
+            # Event-driven candidate saver (replaces old CandidateSaver)
+            self.event_candidate_saver = EventDrivenCandidateSaver(
+                output_dir=Path("data/unlabeled_images"),
+                storage_limit_gb=config.model.candidate_storage_limit_gb,
+            )
+
+            logger.info("Basic components initialized successfully")
 
         except Exception as e:
             logger.error(f"Failed to initialize components: {e}")
             raise
+
+    async def _initialize_tracking_manager(self) -> None:
+        """Initialize vehicle tracking manager with journey ID continuation."""
+        try:
+            # Get last journey ID from database for continuation
+            last_journey_id = await self.event_database.get_last_journey_id()
+
+            # Initialize tracking manager with track confirmation
+            self.vehicle_tracking_manager = VehicleTrackingManager(
+                track_activation_threshold=0.5,  # Detection confidence threshold for track activation
+                lost_track_buffer=30,  # Number of frames to buffer when a track is lost
+                minimum_matching_threshold=0.8,  # Threshold for matching tracks with detections
+                frame_rate=30,  # Video frame rate for prediction algorithms
+                update_interval_seconds=1.0,  # WebSocket update interval
+                start_journey_counter=last_journey_id,  # Continue journey IDs from database
+                minimum_consecutive_frames=3,  # Track confirmation threshold
+            )
+
+            # Register event-driven candidate saver as listener
+            self.vehicle_tracking_manager.add_event_listener(self._handle_tracking_event)
+
+            logger.info(
+                f"Vehicle tracking manager initialized with journey ID continuation from {last_journey_id}"
+            )
+            logger.info("Event-driven candidate saver registered as listener")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize vehicle tracking manager: {e}")
+            raise
+
+    def _handle_tracking_event(self, event: VehicleEvent, frame: NDArray) -> None:
+        """Handle vehicle tracking events by routing them to the candidate saver.
+
+        Args:
+            event: Vehicle lifecycle event
+            frame: Current video frame
+        """
+        try:
+            if isinstance(event, VehicleEntered):
+                self.event_candidate_saver.handle_vehicle_entered(event, frame)
+            elif isinstance(event, VehicleUpdated):
+                self.event_candidate_saver.handle_vehicle_updated(event, frame)
+            elif isinstance(event, VehicleExited):
+                saved_path = self.event_candidate_saver.handle_vehicle_exited(event)
+                if saved_path:
+                    logger.debug(f"Candidate image saved for {event.journey_id}: {saved_path.name}")
+        except Exception as e:
+            logger.error(f"Error handling tracking event {type(event).__name__}: {e}")
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -352,6 +158,10 @@ class TrafficMetryProcessor:
             await self.event_database.connect()
             logger.info("Database connection established")
 
+            # Initialize tracking manager with journey ID continuation
+            await self._initialize_tracking_manager()
+            logger.info("Vehicle tracking manager initialized with journey ID continuation")
+
             with self.camera:
                 logger.info("Camera connection established")
 
@@ -370,23 +180,14 @@ class TrafficMetryProcessor:
                         raw_detections = self.detector.detect_vehicles(frame)
                         self.detection_count += len(raw_detections)
 
-                        # Assign lanes to detections before tracking
-                        lane_assignments = {}
-                        for detection in raw_detections:
-                            lane, direction = self.lane_analyzer.assign_lane(detection)
-                            lane_assignments[detection.detection_id] = (lane, direction)
-
-                        # 🎯 EVENT-DRIVEN TRACKING: Update tracking and get lifecycle events
+                        # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection
+                        assert self.vehicle_tracking_manager is not None, "Tracking manager should be initialized"
                         tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                            raw_detections, lane_assignments
+                            raw_detections, current_frame=frame
                         )
 
                         # Process vehicle lifecycle events (not detections!)
                         await self._process_vehicle_events(vehicle_events)
-
-                        # Save candidate images for active vehicles
-                        for detection in tracked_detections:
-                            await self._save_candidate_image(frame, detection)
 
                         # Log statistics periodically
                         current_time = time.time()
@@ -428,19 +229,20 @@ class TrafficMetryProcessor:
         """
         for event in vehicle_events:
             if isinstance(event, VehicleEntered):
-                # Vehicle entered tracking area
+                # Vehicle entered tracking area with dynamic direction detection
                 logger.info(
-                    f"🚗 Vehicle {event.track_id} ({event.vehicle_type}) entered in lane {event.lane} "
-                    f"moving {event.direction}"
+                    f"🚗 Vehicle {event.journey_id} (Track {event.track_id}) ({event.vehicle_type}) entered at "
+                    f"position ({event.detection.centroid[0]}, {event.detection.centroid[1]})"
                 )
 
                 # Future: Send WebSocket notification for vehicle entry
                 # await self._publish_websocket_event(event.to_websocket_format())
 
             elif isinstance(event, VehicleUpdated):
-                # Vehicle position updated - for real-time WebSocket
+                # Vehicle position updated with dynamic direction analysis
                 logger.debug(
-                    f"📍 Vehicle {event.track_id} updated: lane {event.lane}, "
+                    f"📍 Vehicle {event.journey_id} (Track {event.track_id}) updated: "
+                    f"direction {event.movement_direction}, "
                     f"confidence {event.current_confidence:.2f}, "
                     f"detections {event.total_detections_so_far}"
                 )
@@ -471,25 +273,6 @@ class TrafficMetryProcessor:
                 # Future: Send WebSocket exit notification
                 # await self._publish_websocket_event(event.to_websocket_format())
 
-    async def _save_candidate_image(self, frame: NDArray, detection: DetectionResult) -> None:
-        """Save candidate image for tracked vehicle.
-
-        Args:
-            frame: Source video frame
-            detection: Vehicle detection result with track_id
-        """
-        try:
-            # Save candidate image (with some probability to avoid too many images)
-            if (
-                detection.confidence > 0.7 and self.frame_count % 10 == 0
-            ):  # Save every 10th high-confidence detection
-                await asyncio.get_event_loop().run_in_executor(
-                    None, self.candidate_saver.save_candidate, frame, detection
-                )
-
-        except Exception as e:
-            logger.error(f"Error saving candidate image for detection {detection.detection_id}: {e}")
-
     def _log_statistics(self, elapsed_time: float) -> None:
         """Log performance statistics.
 
@@ -501,6 +284,7 @@ class TrafficMetryProcessor:
             (self.detection_count / elapsed_time) * 60 if elapsed_time > 0 else 0
         )
 
+        assert self.vehicle_tracking_manager is not None
         tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
 
         logger.info(
@@ -512,7 +296,7 @@ class TrafficMetryProcessor:
             f"Active vehicles: {tracking_stats['active_vehicles']}, "
             f"Total vehicles: {tracking_stats['total_vehicles_tracked']}, "
             f"Journeys completed: {tracking_stats['total_journeys_completed']}, "
-            f"Candidates saved: {self.candidate_saver.saved_count}"
+            f"Candidates saved: {self.event_candidate_saver.get_statistics()['saved_candidates']}"
         )
 
     def _log_final_statistics(self) -> None:
@@ -521,8 +305,10 @@ class TrafficMetryProcessor:
         logger.info(f"Total frames processed: {self.frame_count}")
         logger.info(f"Total detections: {self.detection_count}")
         logger.info(f"Total events generated: {self.event_count}")
-        logger.info(f"Candidate images saved: {self.candidate_saver.saved_count}")
+        candidate_stats = self.event_candidate_saver.get_statistics()
+        logger.info(f"Candidate images saved: {candidate_stats['saved_candidates']}")
 
+        assert self.vehicle_tracking_manager is not None
         tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
         logger.info(f"Total vehicles tracked: {tracking_stats['total_vehicles_tracked']}")
         logger.info(f"Complete journeys recorded: {tracking_stats['total_journeys_completed']}")

@@ -134,17 +134,27 @@ class EventDatabase:
                 CREATE TABLE IF NOT EXISTS vehicle_journeys (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     track_id INTEGER NOT NULL,           -- ByteTrack tracking ID
+                    journey_id TEXT,                     -- Global unique journey ID
                     vehicle_type TEXT NOT NULL,          -- VehicleType enum value
                     entry_timestamp REAL NOT NULL,      -- When vehicle entered tracking
                     exit_timestamp REAL,                -- When vehicle exited tracking
-                    entry_lane INTEGER,                 -- Lane where vehicle entered
-                    exit_lane INTEGER,                  -- Lane where vehicle exited
-                    movement_direction TEXT,            -- Movement direction (left/right/stationary)
+                    entry_position_json TEXT,           -- JSON [x,y] entry position
+                    exit_position_json TEXT,            -- JSON [x,y] exit position
+                    movement_direction TEXT,            -- Dynamic movement direction
+                    direction_confidence REAL,          -- Direction confidence (0-1)
+                    total_movement_pixels REAL,         -- Total distance traveled
+                    average_speed_pixels_per_second REAL, -- Average speed
+                    displacement_vector_json TEXT,      -- JSON [dx,dy] displacement
                     total_detections INTEGER NOT NULL,  -- Total detections for this vehicle
                     best_confidence REAL NOT NULL,      -- Highest confidence detection
                     best_bbox_json TEXT NOT NULL,       -- JSON [x1,y1,x2,y2] of best detection
                     journey_duration_seconds REAL NOT NULL, -- Total journey time
                     best_detection_timestamp REAL NOT NULL, -- Timestamp of best detection
+                    
+                    -- Legacy columns (kept for backward compatibility but can be NULL)
+                    entry_lane INTEGER,                 -- Lane where vehicle entered (legacy)
+                    exit_lane INTEGER,                  -- Lane where vehicle exited (legacy)
+                    
                     created_at REAL NOT NULL DEFAULT (unixepoch())
                 )
             """)
@@ -333,18 +343,23 @@ class EventDatabase:
             )
 
         try:
-            # Prepare simplified journey data for database storage
+            # Prepare enhanced journey data for database storage (position-based)
             journey_data = (
                 journey.track_id,
+                journey.journey_id,
                 journey.vehicle_type.value,
                 journey.entry_timestamp,
                 journey.exit_timestamp,
-                journey.entry_lane,
-                journey.exit_lane,
+                json.dumps(journey.entry_position),   # Store position as JSON
+                json.dumps(journey.exit_position),    # Store position as JSON
                 journey.movement_direction,
+                journey.direction_confidence,
+                journey.total_movement_pixels,
+                journey.average_speed_pixels_per_second,
+                json.dumps(journey.displacement_vector),  # Store as JSON
                 journey.total_detections,
                 journey.best_confidence,
-                json.dumps(journey.best_bbox),     # Store bbox as JSON array
+                json.dumps(journey.best_bbox),       # Store bbox as JSON array
                 journey.journey_duration_seconds,
                 journey.best_detection_timestamp,
             )
@@ -382,10 +397,12 @@ class EventDatabase:
             conn.execute(
                 """
                 INSERT INTO vehicle_journeys
-                (track_id, vehicle_type, entry_timestamp, exit_timestamp, entry_lane,
-                 exit_lane, movement_direction, total_detections, best_confidence,
+                (track_id, journey_id, vehicle_type, entry_timestamp, exit_timestamp, 
+                 entry_position_json, exit_position_json, movement_direction, 
+                 direction_confidence, total_movement_pixels, average_speed_pixels_per_second,
+                 displacement_vector_json, total_detections, best_confidence,
                  best_bbox_json, journey_duration_seconds, best_detection_timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 journey_data,
             )
