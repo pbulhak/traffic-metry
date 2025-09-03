@@ -40,11 +40,12 @@ from numpy.typing import NDArray
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Import ALL TrafficMetry components
-from backend.camera_stream import CameraConnectionError, CameraStream
+from backend.async_components import AsyncCameraStream, AsyncVehicleDetector
+from backend.camera_stream import CameraConnectionError
 from backend.config import Settings, get_config
 from backend.database import DatabaseError, EventDatabase
 from backend.detection_models import DetectionResult, VehicleType
-from backend.detector import DetectionError, ModelLoadError, VehicleDetector
+from backend.detector import DetectionError, ModelLoadError
 from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
@@ -126,11 +127,11 @@ class DiagnosticsViewer:
     def _initialize_components(self) -> None:
         """Initialize all TrafficMetry components."""
         try:
-            # Camera stream
-            self.camera = CameraStream(self.config.camera)
+            # Async camera stream with thread pool
+            self.camera = AsyncCameraStream(self.config.camera, max_workers=2)
 
-            # Vehicle detector with lazy loading
-            self.detector = VehicleDetector(self.config.model)
+            # Async vehicle detector with thread pool
+            self.detector = AsyncVehicleDetector(self.config.model, max_workers=3)
 
             # Vehicle tracking manager with ByteTrack
             self.vehicle_tracking_manager = VehicleTrackingManager(
@@ -202,7 +203,11 @@ class DiagnosticsViewer:
                 self._db_connected = True
                 logger.info("Database connected")
 
-            with self.camera:
+            # Initialize async detector
+            await self.detector.initialize()
+            logger.info("Async vehicle detector initialized")
+
+            async with self.camera:
                 logger.info("Diagnostics viewer started - Camera connected")
                 self._display_controls_help()
 
@@ -222,8 +227,8 @@ class DiagnosticsViewer:
 
                     if not self.state.paused:
                         try:
-                            # Detect vehicles
-                            raw_detections = self.detector.detect_vehicles(frame)
+                            # Detect vehicles asynchronously
+                            raw_detections = await self.detector.detect_vehicles(frame)
                             self.state.total_detections += len(raw_detections)
 
                             # Update tracking with dynamic direction detection
@@ -273,7 +278,7 @@ class DiagnosticsViewer:
     async def _capture_frame(self) -> NDArray | None:
         """Capture frame from camera with pause mode support."""
         if not self.state.paused:
-            frame = self.camera.get_frame()
+            frame = await self.camera.get_frame()
             if frame is not None:
                 self.state.total_frames += 1
             return frame
