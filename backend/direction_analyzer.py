@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class DynamicDirectionAnalyzer:
     """Real-time direction detection based on vehicle movement history.
-    
+
     This analyzer processes vehicle position history to determine movement direction
     dynamically, providing more accurate results than static lane assignments.
     """
@@ -28,14 +28,13 @@ class DynamicDirectionAnalyzer:
     HORIZONTAL_DOMINANCE_RATIO = 1.5  # dx must be 1.5x larger than dy for horizontal movement
 
     def analyze_movement_direction(
-        self,
-        position_history: list[tuple[float, tuple[int, int]]]
+        self, position_history: list[tuple[float, tuple[int, int]]]
     ) -> tuple[str | None, float]:
         """Analyze vehicle movement to determine direction.
-        
+
         Args:
             position_history: List of (timestamp, (x, y)) tuples
-            
+
         Returns:
             (direction, confidence) where direction is "left"/"right"/"stationary"
             and confidence is a value between 0.0 and 1.0
@@ -46,7 +45,8 @@ class DynamicDirectionAnalyzer:
         # Filter recent positions within time window
         current_time = position_history[-1][0]
         recent_positions = [
-            pos for timestamp, pos in position_history
+            pos
+            for timestamp, pos in position_history
             if current_time - timestamp <= self.HISTORY_WINDOW_SECONDS
         ]
 
@@ -61,7 +61,7 @@ class DynamicDirectionAnalyzer:
         dy = end_pos[1] - start_pos[1]
 
         # Calculate movement distance
-        movement_distance = (dx**2 + dy**2)**0.5
+        movement_distance = (dx**2 + dy**2) ** 0.5
 
         if movement_distance < self.MIN_MOVEMENT_THRESHOLD_PIXELS:
             return "stationary", 0.8
@@ -84,12 +84,12 @@ class DynamicDirectionAnalyzer:
 
     def _determine_direction(self, dx: float, dy: float, distance: float) -> tuple[str, float]:
         """Determine movement direction from displacement vector.
-        
+
         Args:
             dx: Horizontal displacement
-            dy: Vertical displacement  
+            dy: Vertical displacement
             distance: Total movement distance
-            
+
         Returns:
             (direction, confidence) tuple
         """
@@ -116,12 +116,12 @@ class DynamicDirectionAnalyzer:
 
     def _calculate_movement_consistency(self, positions: list[tuple[int, int]]) -> float:
         """Calculate consistency score for movement direction.
-        
+
         A consistent movement has similar direction vectors between consecutive positions.
-        
+
         Args:
             positions: List of (x, y) position tuples
-            
+
         Returns:
             Consistency score between 0.0 and 1.0
         """
@@ -131,16 +131,16 @@ class DynamicDirectionAnalyzer:
         # Calculate direction vectors between consecutive positions
         direction_vectors = []
         for i in range(1, len(positions)):
-            prev_x, prev_y = positions[i-1]
+            prev_x, prev_y = positions[i - 1]
             curr_x, curr_y = positions[i]
 
             dx = curr_x - prev_x
             dy = curr_y - prev_y
 
             # Normalize vector (avoid division by zero)
-            magnitude = (dx**2 + dy**2)**0.5
+            magnitude = (dx**2 + dy**2) ** 0.5
             if magnitude > 0:
-                direction_vectors.append((dx/magnitude, dy/magnitude))
+                direction_vectors.append((dx / magnitude, dy / magnitude))
 
         if len(direction_vectors) < 2:
             return 0.5
@@ -148,7 +148,7 @@ class DynamicDirectionAnalyzer:
         # Calculate average consistency between consecutive direction vectors
         consistency_scores = []
         for i in range(1, len(direction_vectors)):
-            prev_dx, prev_dy = direction_vectors[i-1]
+            prev_dx, prev_dy = direction_vectors[i - 1]
             curr_dx, curr_dy = direction_vectors[i]
 
             # Dot product gives cosine of angle between vectors
@@ -162,34 +162,31 @@ class DynamicDirectionAnalyzer:
 
     def is_direction_reliable(self, direction: str | None, confidence: float) -> bool:
         """Check if direction detection is reliable enough to use.
-        
+
         Args:
             direction: Detected direction
             confidence: Detection confidence
-            
+
         Returns:
             True if direction is reliable enough to use
         """
-        return (
-            direction is not None
-            and confidence >= self.CONFIDENCE_THRESHOLD
-        )
+        return direction is not None and confidence >= self.CONFIDENCE_THRESHOLD
 
     def smooth_direction_transition(
         self,
         current_direction: str | None,
         new_direction: str | None,
         new_confidence: float,
-        current_confidence: float = 0.0
+        current_confidence: float = 0.0,
     ) -> tuple[str | None, float]:
         """Smooth direction transitions to prevent flickering.
-        
+
         Args:
             current_direction: Currently assigned direction
             new_direction: Newly detected direction
             new_confidence: Confidence in new direction
             current_confidence: Confidence in current direction
-            
+
         Returns:
             (smoothed_direction, smoothed_confidence) tuple
         """
@@ -221,10 +218,10 @@ class MovementAnalytics:
     @staticmethod
     def calculate_total_distance(position_history: list[tuple[float, tuple[int, int]]]) -> float:
         """Calculate total distance traveled in pixels.
-        
+
         Args:
             position_history: List of (timestamp, (x, y)) tuples
-            
+
         Returns:
             Total distance in pixels
         """
@@ -233,13 +230,13 @@ class MovementAnalytics:
 
         total_distance = 0.0
         for i in range(1, len(position_history)):
-            _, prev_pos = position_history[i-1]
+            _, prev_pos = position_history[i - 1]
             _, curr_pos = position_history[i]
 
             dx = curr_pos[0] - prev_pos[0]
             dy = curr_pos[1] - prev_pos[1]
 
-            distance = (dx**2 + dy**2)**0.5
+            distance = (dx**2 + dy**2) ** 0.5
             total_distance += distance
 
         return total_distance
@@ -247,10 +244,10 @@ class MovementAnalytics:
     @staticmethod
     def calculate_average_speed(position_history: list[tuple[float, tuple[int, int]]]) -> float:
         """Calculate average speed in pixels per second.
-        
+
         Args:
             position_history: List of (timestamp, (x, y)) tuples
-            
+
         Returns:
             Average speed in pixels per second
         """
@@ -266,12 +263,14 @@ class MovementAnalytics:
         return total_distance / time_span
 
     @staticmethod
-    def get_displacement_vector(position_history: list[tuple[float, tuple[int, int]]]) -> tuple[float, float]:
+    def get_displacement_vector(
+        position_history: list[tuple[float, tuple[int, int]]],
+    ) -> tuple[float, float]:
         """Get overall displacement vector from start to end position.
-        
+
         Args:
             position_history: List of (timestamp, (x, y)) tuples
-            
+
         Returns:
             (dx, dy) displacement vector
         """

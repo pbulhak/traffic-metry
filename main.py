@@ -62,14 +62,14 @@ class TrafficMetryProcessor:
 
         # Performance tracking for headless monitoring
         self.camera_fps_tracker = {
-            'last_frame_time': 0.0,
-            'frame_intervals': [],
-            'window_size': 30  # Rolling average over 30 frames
+            "last_frame_time": 0.0,
+            "frame_intervals": [],
+            "window_size": 30,  # Rolling average over 30 frames
         }
-        
+
         self.processing_fps_tracker = {
-            'processing_times': [],
-            'window_size': 30  # Rolling average over 30 processing cycles
+            "processing_times": [],
+            "window_size": 30,  # Rolling average over 30 processing cycles
         }
 
         # Initialize components
@@ -112,7 +112,7 @@ class TrafficMetryProcessor:
                 frame_rate=30,  # Video frame rate for prediction algorithms
                 update_interval_seconds=1.0,  # WebSocket update interval
                 start_journey_counter=last_journey_id,  # Continue journey IDs from database
-                minimum_consecutive_frames=3,  # Track confirmation threshold
+                minimum_consecutive_frames=5,  # Track confirmation threshold
             )
 
             # Register event-driven candidate saver as listener
@@ -192,18 +192,23 @@ class TrafficMetryProcessor:
                         # 📊 CAMERA FPS TRACKING: Measure frame interval
                         camera_frame_start = time.time()
                         frame = await self.camera.get_frame()
-                        
+
                         # Track camera FPS (frame delivery rate)
-                        if self.camera_fps_tracker['last_frame_time'] > 0:
-                            frame_interval = camera_frame_start - self.camera_fps_tracker['last_frame_time']
-                            self.camera_fps_tracker['frame_intervals'].append(frame_interval)
-                            
+                        if self.camera_fps_tracker["last_frame_time"] > 0:
+                            frame_interval = (
+                                camera_frame_start - self.camera_fps_tracker["last_frame_time"]
+                            )
+                            self.camera_fps_tracker["frame_intervals"].append(frame_interval)
+
                             # Maintain rolling window
-                            if len(self.camera_fps_tracker['frame_intervals']) > self.camera_fps_tracker['window_size']:
-                                self.camera_fps_tracker['frame_intervals'].pop(0)
-                        
-                        self.camera_fps_tracker['last_frame_time'] = camera_frame_start
-                        
+                            if (
+                                len(self.camera_fps_tracker["frame_intervals"])
+                                > self.camera_fps_tracker["window_size"]
+                            ):
+                                self.camera_fps_tracker["frame_intervals"].pop(0)
+
+                        self.camera_fps_tracker["last_frame_time"] = camera_frame_start
+
                         if frame is None:
                             logger.warning("No frame received from camera")
                             await asyncio.sleep(0.1)
@@ -216,22 +221,27 @@ class TrafficMetryProcessor:
                         self.detection_count += len(raw_detections)
 
                         # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection
-                        assert self.vehicle_tracking_manager is not None, "Tracking manager should be initialized"
+                        assert self.vehicle_tracking_manager is not None, (
+                            "Tracking manager should be initialized"
+                        )
                         tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
                             raw_detections, current_frame=frame
                         )
 
                         # Process vehicle lifecycle events (not detections!)
                         await self._process_vehicle_events(vehicle_events)
-                        
+
                         # 📊 PROCESSING FPS TRACKING: Complete cycle timing
                         processing_end = time.time()
                         processing_time = processing_end - processing_start
-                        self.processing_fps_tracker['processing_times'].append(processing_time)
-                        
+                        self.processing_fps_tracker["processing_times"].append(processing_time)
+
                         # Maintain rolling window for processing times
-                        if len(self.processing_fps_tracker['processing_times']) > self.processing_fps_tracker['window_size']:
-                            self.processing_fps_tracker['processing_times'].pop(0)
+                        if (
+                            len(self.processing_fps_tracker["processing_times"])
+                            > self.processing_fps_tracker["window_size"]
+                        ):
+                            self.processing_fps_tracker["processing_times"].pop(0)
 
                         # Log statistics periodically
                         current_time = time.time()
@@ -330,14 +340,18 @@ class TrafficMetryProcessor:
 
         # 📊 CALCULATE CAMERA FPS (frame delivery rate from AsyncCameraStream)
         camera_fps = 0.0
-        if len(self.camera_fps_tracker['frame_intervals']) > 1:
-            avg_frame_interval = sum(self.camera_fps_tracker['frame_intervals']) / len(self.camera_fps_tracker['frame_intervals'])
+        if len(self.camera_fps_tracker["frame_intervals"]) > 1:
+            avg_frame_interval = sum(self.camera_fps_tracker["frame_intervals"]) / len(
+                self.camera_fps_tracker["frame_intervals"]
+            )
             camera_fps = 1.0 / avg_frame_interval if avg_frame_interval > 0 else 0.0
 
-        # 📊 CALCULATE PROCESSING FPS (complete processing cycle rate)  
+        # 📊 CALCULATE PROCESSING FPS (complete processing cycle rate)
         processing_fps = 0.0
-        if len(self.processing_fps_tracker['processing_times']) > 1:
-            avg_processing_time = sum(self.processing_fps_tracker['processing_times']) / len(self.processing_fps_tracker['processing_times'])
+        if len(self.processing_fps_tracker["processing_times"]) > 1:
+            avg_processing_time = sum(self.processing_fps_tracker["processing_times"]) / len(
+                self.processing_fps_tracker["processing_times"]
+            )
             processing_fps = 1.0 / avg_processing_time if avg_processing_time > 0 else 0.0
 
         # 📊 CALCULATE EFFICIENCY RATIO (how well we utilize camera stream)
@@ -368,15 +382,15 @@ class TrafficMetryProcessor:
 
         # 📊 ADDITIONAL DETAILED METRICS (every 5 minutes for deep analysis)
         if elapsed_time > 0 and int(elapsed_time) % 300 == 0:  # Every 5 minutes
-            frame_intervals_count = len(self.camera_fps_tracker['frame_intervals'])
-            processing_times_count = len(self.processing_fps_tracker['processing_times'])
-            
+            frame_intervals_count = len(self.camera_fps_tracker["frame_intervals"])
+            processing_times_count = len(self.processing_fps_tracker["processing_times"])
+
             logger.info(
                 f"📊 DEEP METRICS (5min) | "
                 f"Camera samples: {frame_intervals_count}/{self.camera_fps_tracker['window_size']}, "
                 f"Processing samples: {processing_times_count}/{self.processing_fps_tracker['window_size']} | "
-                f"Avg frame interval: {avg_frame_interval*1000:.1f}ms, "
-                f"Avg processing time: {avg_processing_time*1000:.1f}ms | "
+                f"Avg frame interval: {avg_frame_interval * 1000:.1f}ms, "
+                f"Avg processing time: {avg_processing_time * 1000:.1f}ms | "
                 f"Thread pools: Camera={self.camera.get_camera_info().get('worker_threads', 'N/A')}, "
                 f"Detector={self.detector.get_model_info().get('async_worker_threads', 'N/A')}"
             )

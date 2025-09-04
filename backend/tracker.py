@@ -132,7 +132,6 @@ class VehicleTrackingState:
             Complete VehicleJourney data with clean position tracking
         """
         return VehicleJourney(
-            track_id=self.track_id,
             journey_id=self.journey_id,
             vehicle_type=self.vehicle_type,
             entry_timestamp=self.entry_timestamp,
@@ -449,7 +448,9 @@ class VehicleTrackingManager:
 
         return events
 
-    def _handle_empty_frame(self, current_timestamp: float, current_frame: np.ndarray) -> list[VehicleEvent]:
+    def _handle_empty_frame(
+        self, current_timestamp: float, current_frame: np.ndarray
+    ) -> list[VehicleEvent]:
         """Handle empty frame by aging out all active vehicles.
 
         Args:

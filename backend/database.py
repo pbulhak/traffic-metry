@@ -111,13 +111,11 @@ class EventDatabase:
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
 
         try:
-
-            # Clean journey table with dedicated position columns
+            # Clean journey table with dedicated position columns - journey_id as SINGLE SOURCE OF TRUTH
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS vehicle_journeys (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    track_id INTEGER NOT NULL,           -- ByteTrack tracking ID
-                    journey_id TEXT NOT NULL,            -- Global unique journey ID
+                    journey_id TEXT NOT NULL UNIQUE,     -- Global unique journey ID - SINGLE SOURCE OF TRUTH
                     vehicle_type TEXT NOT NULL,          -- VehicleType enum value
                     entry_timestamp REAL NOT NULL,      -- When vehicle entered tracking
                     exit_timestamp REAL,                -- When vehicle exited tracking
@@ -142,17 +140,32 @@ class EventDatabase:
             # Create performance indexes for long-term queries
 
             # Journey table indexes for efficient analytics queries
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_entry_timestamp ON vehicle_journeys(entry_timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_exit_timestamp ON vehicle_journeys(exit_timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_vehicle_type ON vehicle_journeys(vehicle_type)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_track_id ON vehicle_journeys(track_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_duration ON vehicle_journeys(journey_duration_seconds)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journeys_journey_id ON vehicle_journeys(journey_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journeys_entry_timestamp ON vehicle_journeys(entry_timestamp)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journeys_exit_timestamp ON vehicle_journeys(exit_timestamp)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journeys_vehicle_type ON vehicle_journeys(vehicle_type)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journeys_duration ON vehicle_journeys(journey_duration_seconds)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journeys_journey_id ON vehicle_journeys(journey_id)"
+            )
 
             # Position-based indexes for spatial queries
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_entry_position ON vehicle_journeys(entry_pos_x, entry_pos_y)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_exit_position ON vehicle_journeys(exit_pos_x, exit_pos_y)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_movement_direction ON vehicle_journeys(movement_direction)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_entry_position ON vehicle_journeys(entry_pos_x, entry_pos_y)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_exit_position ON vehicle_journeys(exit_pos_x, exit_pos_y)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_movement_direction ON vehicle_journeys(movement_direction)"
+            )
 
             # Set performance pragmas optimized for write-heavy workload
             conn.execute("PRAGMA journal_mode=WAL")
@@ -185,8 +198,6 @@ class EventDatabase:
             except Exception as e:
                 logger.error(f"Error closing database connection: {e}")
 
-
-
     async def save_vehicle_journey(self, journey: Any) -> bool:
         """Save complete vehicle journey to database.
 
@@ -207,22 +218,19 @@ class EventDatabase:
         try:
             # Prepare clean journey data for database storage (dedicated position columns)
             journey_data = (
-                journey.track_id,
                 journey.journey_id,
                 journey.vehicle_type.value,
                 journey.entry_timestamp,
                 journey.exit_timestamp,
-
                 # Clean position data as separate integers
                 journey.entry_pos_x,
                 journey.entry_pos_y,
                 journey.exit_pos_x,
                 journey.exit_pos_y,
-
                 journey.movement_direction,
                 journey.total_detections,
                 journey.best_confidence,
-                json.dumps(journey.best_bbox),       # Only bbox remains as JSON
+                json.dumps(journey.best_bbox),  # Only bbox remains as JSON
                 journey.journey_duration_seconds,
                 journey.best_detection_timestamp,
             )
@@ -260,11 +268,11 @@ class EventDatabase:
             conn.execute(
                 """
                 INSERT INTO vehicle_journeys
-                (track_id, journey_id, vehicle_type, entry_timestamp, exit_timestamp,
+                (journey_id, vehicle_type, entry_timestamp, exit_timestamp,
                  entry_pos_x, entry_pos_y, exit_pos_x, exit_pos_y,
                  movement_direction, total_detections, best_confidence,
                  best_bbox_json, journey_duration_seconds, best_detection_timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 journey_data,
             )
@@ -274,8 +282,6 @@ class EventDatabase:
             raise DatabaseConnectionError(
                 f"Failed to save journey to database: {e}", db_path=str(self.db_path)
             ) from e
-
-
 
     def get_database_stats(self) -> dict[str, Any]:
         """Get database statistics and health information.
@@ -328,40 +334,66 @@ class EventDatabase:
 
     async def get_last_journey_id(self) -> int:
         """Get the last journey counter from database for ID continuation.
-        
+
         Returns:
             Last journey counter number, or 0 if no journeys exist
         """
         if not self._connection:
-            logger.warning("Database not connected for get_last_journey_id, returning 0")
+            logger.warning("⚠️ Database not connected for get_last_journey_id, returning 0")
             return 0
 
         try:
+
             def _get_last_id_sync(conn: sqlite3.Connection) -> int:
                 cursor = conn.cursor()
+
+                # First check total count
+                cursor.execute("SELECT COUNT(*) FROM vehicle_journeys")
+                total_count = cursor.fetchone()[0]
+                logger.debug(f"🔍 Database contains {total_count} total journeys")
+
+                # Get the most recent journey_id
                 cursor.execute("""
                     SELECT journey_id FROM vehicle_journeys 
                     WHERE journey_id LIKE 'JOURNEY_%' 
                     ORDER BY id DESC LIMIT 1
                 """)
                 result = cursor.fetchone()
+
                 if result and result[0]:
                     # Extract number from "JOURNEY_000123"
                     try:
                         journey_id = result[0]
+                        logger.debug(f"🔍 Found most recent journey_id: '{journey_id}'")
+
                         if "_" in journey_id:
-                            counter_str = journey_id.split('_')[-1]
-                            return int(counter_str)
+                            counter_str = journey_id.split("_")[-1]
+                            counter_value = int(counter_str)
+                            logger.info(
+                                f"📊 Parsed counter value: {counter_value} from journey_id '{journey_id}'"
+                            )
+                            return counter_value
+                        else:
+                            logger.warning(
+                                f"⚠️ Journey ID format unexpected: '{journey_id}' (no underscore)"
+                            )
                     except (ValueError, IndexError) as e:
-                        logger.warning(f"Failed to parse journey_id '{result[0]}': {e}")
+                        logger.warning(f"⚠️ Failed to parse journey_id '{result[0]}': {e}")
+                        return 0
+                else:
+                    logger.info(f"📊 No journeys found in database, starting from 0")
+                    return 0
+
                 return 0
 
             loop = asyncio.get_event_loop()
             last_id = await loop.run_in_executor(None, _get_last_id_sync, self._connection)
 
-            logger.info(f"Retrieved last journey ID counter from database: {last_id}")
+            logger.info(
+                f"✅ Retrieved last journey ID counter from database: {last_id} (next will be {last_id + 1})"
+            )
             return last_id
 
         except Exception as e:
-            logger.error(f"Error getting last journey ID from database: {e}")
+            logger.error(f"💥 Error getting last journey ID from database: {e}")
             return 0

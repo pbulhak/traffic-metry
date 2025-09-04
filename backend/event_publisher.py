@@ -26,7 +26,7 @@ class MessageCache:
 
     def __init__(self, max_size: int = 500):
         """Initialize message cache.
-        
+
         Args:
             max_size: Maximum number of cached messages
         """
@@ -38,10 +38,10 @@ class MessageCache:
 
     def _generate_cache_key(self, event_data: dict[str, Any]) -> str:
         """Generate cache key for event data.
-        
+
         Args:
             event_data: Event data to generate key for
-            
+
         Returns:
             Cache key string
         """
@@ -60,10 +60,10 @@ class MessageCache:
 
     def get_or_create(self, event_data: dict[str, Any]) -> str:
         """Get cached message or create and cache new one.
-        
+
         Args:
             event_data: Event data to serialize
-            
+
         Returns:
             Serialized JSON message string
         """
@@ -85,11 +85,7 @@ class MessageCache:
         try:
             timestamp = datetime.now(UTC).isoformat()
 
-            ws_message = WebSocketMessage(
-                type="event",
-                data=event_data,
-                timestamp=timestamp
-            )
+            ws_message = WebSocketMessage(type="event", data=event_data, timestamp=timestamp)
             serialized_message = ws_message.model_dump_json()
 
             # Add to cache
@@ -110,7 +106,7 @@ class MessageCache:
 
     def get_stats(self) -> dict[str, Any]:
         """Get cache performance statistics.
-        
+
         Returns:
             Dictionary with cache statistics
         """
@@ -276,7 +272,7 @@ class ConnectionManager:
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get message cache performance statistics.
-        
+
         Returns:
             Dictionary with cache performance statistics
         """
@@ -364,7 +360,7 @@ class EventPublisher:
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get message cache performance statistics.
-        
+
         Returns:
             Dictionary with cache performance statistics
         """

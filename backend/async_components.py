@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class AsyncCameraStream:
     """Non-blocking wrapper for CameraStream using ThreadPoolExecutor.
-    
+
     This wrapper runs frame capture operations in a separate thread to prevent
     blocking the main async event loop, which is critical for maintaining
     responsive WebSocket connections.
@@ -40,8 +40,7 @@ class AsyncCameraStream:
         self.camera_config = camera_config
         self.camera_stream: CameraStream | None = None
         self.executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="AsyncCamera"
+            max_workers=max_workers, thread_name_prefix="AsyncCamera"
         )
         self.is_connected = False
 
@@ -63,15 +62,14 @@ class AsyncCameraStream:
             return
 
         try:
+
             def _connect_sync() -> CameraStream:
                 camera = CameraStream(self.camera_config)
                 camera.__enter__()  # Initialize the connection
                 return camera
 
             loop = asyncio.get_event_loop()
-            self.camera_stream = await loop.run_in_executor(
-                self.executor, _connect_sync
-            )
+            self.camera_stream = await loop.run_in_executor(self.executor, _connect_sync)
             self.is_connected = True
             logger.info("Async camera stream connected successfully")
 
@@ -85,13 +83,12 @@ class AsyncCameraStream:
             return
 
         try:
+
             def _disconnect_sync(camera: CameraStream) -> None:
                 camera.__exit__(None, None, None)
 
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                self.executor, _disconnect_sync, self.camera_stream
-            )
+            await loop.run_in_executor(self.executor, _disconnect_sync, self.camera_stream)
 
             self.camera_stream = None
             self.is_connected = False
@@ -113,13 +110,12 @@ class AsyncCameraStream:
             return None
 
         try:
+
             def _get_frame_sync(camera: CameraStream) -> NDArray | None:
                 return camera.get_frame()
 
             loop = asyncio.get_event_loop()
-            frame = await loop.run_in_executor(
-                self.executor, _get_frame_sync, self.camera_stream
-            )
+            frame = await loop.run_in_executor(self.executor, _get_frame_sync, self.camera_stream)
 
             return frame
 
@@ -141,7 +137,7 @@ class AsyncCameraStream:
 
 class AsyncVehicleDetector:
     """Non-blocking wrapper for VehicleDetector using ThreadPoolExecutor.
-    
+
     This wrapper runs YOLO detection operations in separate threads to prevent
     blocking the main async event loop during heavy model inference.
     """
@@ -156,8 +152,7 @@ class AsyncVehicleDetector:
         self.model_config = model_config
         self.detector: VehicleDetector | None = None
         self.executor = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="AsyncDetector"
+            max_workers=max_workers, thread_name_prefix="AsyncDetector"
         )
         self.is_loaded = False
 
@@ -170,6 +165,7 @@ class AsyncVehicleDetector:
             return
 
         try:
+
             def _initialize_sync() -> VehicleDetector:
                 detector = VehicleDetector(self.model_config)
                 # Force model loading to ensure it's ready
@@ -177,9 +173,7 @@ class AsyncVehicleDetector:
                 return detector
 
             loop = asyncio.get_event_loop()
-            self.detector = await loop.run_in_executor(
-                self.executor, _initialize_sync
-            )
+            self.detector = await loop.run_in_executor(self.executor, _initialize_sync)
             self.is_loaded = True
             logger.info("Async vehicle detector initialized successfully")
 
@@ -201,7 +195,10 @@ class AsyncVehicleDetector:
             return []
 
         try:
-            def _detect_sync(detector: VehicleDetector, input_frame: NDArray) -> list[DetectionResult]:
+
+            def _detect_sync(
+                detector: VehicleDetector, input_frame: NDArray
+            ) -> list[DetectionResult]:
                 return detector.detect_vehicles(input_frame)
 
             loop = asyncio.get_event_loop()
@@ -219,14 +216,13 @@ class AsyncVehicleDetector:
         """Cleanup detector resources."""
         if self.detector:
             try:
+
                 def _cleanup_sync(detector: VehicleDetector) -> None:
                     # Detector cleanup if needed
                     pass
 
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    self.executor, _cleanup_sync, self.detector
-                )
+                await loop.run_in_executor(self.executor, _cleanup_sync, self.detector)
 
                 self.detector = None
                 self.is_loaded = False
