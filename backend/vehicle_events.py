@@ -22,8 +22,7 @@ class VehicleJourney:
     """
 
     # Unique identifiers
-    track_id: int  # ByteTrack ID (can be recycled)
-    journey_id: str  # Global unique ID (JOURNEY_000001)
+    journey_id: str  # Global unique ID (JOURNEY_000001) - SINGLE SOURCE OF TRUTH
 
     # Basic data
     vehicle_type: VehicleType

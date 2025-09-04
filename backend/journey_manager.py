@@ -15,16 +15,16 @@ logger = logging.getLogger(__name__)
 
 class JourneyIDManager:
     """Manages global unique journey identifiers for vehicle tracking.
-    
+
     This class creates human-readable journey IDs that remain unique across
     the entire application lifecycle, solving the ByteTrack ID recycling problem.
     """
 
-    def __init__(self, id_format: str = "JOURNEY_{:06d}", start_counter: int = 0):
+    def __init__(self, id_format: str = "JOURNEY_{:08d}", start_counter: int = 0):
         """Initialize journey ID manager.
-        
+
         Args:
-            id_format: Format string for journey IDs (default: JOURNEY_000001)
+            id_format: Format string for journey IDs (default: JOURNEY_00000001)
             start_counter: Starting counter value for ID continuation after restart
         """
         self.id_format = id_format
@@ -35,17 +35,19 @@ class JourneyIDManager:
 
         logger.info(f"JourneyIDManager initialized with start_counter={start_counter}")
         if start_counter > 0:
-            logger.info(f"Continuing journey ID sequence from database (next: JOURNEY_{start_counter + 1:06d})")
+            logger.info(
+                f"Continuing journey ID sequence from database (next: JOURNEY_{start_counter + 1:08d})"
+            )
 
     def create_journey_id(self, track_id: int) -> str:
         """Create new unique journey ID for ByteTrack track_id.
-        
+
         Args:
             track_id: ByteTrack track ID (can be recycled)
-            
+
         Returns:
             Unique journey ID string
-            
+
         Raises:
             ValueError: If track_id already has an assigned journey_id
         """
@@ -69,10 +71,10 @@ class JourneyIDManager:
 
     def get_journey_id(self, track_id: int) -> str | None:
         """Get existing journey ID for track_id.
-        
+
         Args:
             track_id: ByteTrack track ID
-            
+
         Returns:
             Journey ID if exists, None otherwise
         """
@@ -80,10 +82,10 @@ class JourneyIDManager:
 
     def get_track_id(self, journey_id: str) -> int | None:
         """Get track ID for journey ID.
-        
+
         Args:
             journey_id: Journey ID string
-            
+
         Returns:
             Track ID if exists, None otherwise
         """
@@ -91,10 +93,10 @@ class JourneyIDManager:
 
     def release_journey_id(self, track_id: int) -> str | None:
         """Release journey ID when vehicle exits tracking.
-        
+
         Args:
             track_id: ByteTrack track ID to release
-            
+
         Returns:
             Released journey ID if existed, None otherwise
         """
@@ -110,10 +112,10 @@ class JourneyIDManager:
 
     def is_journey_active(self, track_id: int) -> bool:
         """Check if journey is currently active.
-        
+
         Args:
             track_id: ByteTrack track ID
-            
+
         Returns:
             True if journey is active, False otherwise
         """
@@ -121,7 +123,7 @@ class JourneyIDManager:
 
     def get_active_journeys_count(self) -> int:
         """Get count of currently active journeys.
-        
+
         Returns:
             Number of active journeys
         """
@@ -129,7 +131,7 @@ class JourneyIDManager:
 
     def get_active_journey_ids(self) -> list[str]:
         """Get list of all active journey IDs.
-        
+
         Returns:
             List of active journey ID strings
         """
@@ -137,7 +139,7 @@ class JourneyIDManager:
 
     def get_statistics(self) -> dict[str, int]:
         """Get journey management statistics.
-        
+
         Returns:
             Dictionary with statistics
         """
@@ -145,12 +147,12 @@ class JourneyIDManager:
             "active_journeys": self.get_active_journeys_count(),
             "total_journeys_created": self.total_journeys_created,
             "current_counter": self.journey_counter,
-            "completed_journeys": self.total_journeys_created - self.get_active_journeys_count()
+            "completed_journeys": self.total_journeys_created - self.get_active_journeys_count(),
         }
 
     def reset(self) -> None:
         """Reset journey ID manager (for testing purposes).
-        
+
         Warning: This will clear all active journeys!
         """
         logger.warning("Resetting JourneyIDManager - all active journeys will be lost!")
@@ -162,13 +164,13 @@ class JourneyIDManager:
 
     def cleanup_stale_journeys(self, active_track_ids: set[int]) -> int:
         """Cleanup journeys for track_ids that are no longer active.
-        
+
         This method should be called periodically to prevent memory leaks
         if vehicle exit events are missed.
-        
+
         Args:
             active_track_ids: Set of currently active track IDs from tracker
-            
+
         Returns:
             Number of stale journeys cleaned up
         """
@@ -189,7 +191,7 @@ class JourneyIDManager:
 
 class TimestampedJourneyIDManager(JourneyIDManager):
     """Journey ID manager with timestamp-based IDs for enhanced debugging.
-    
+
     Creates journey IDs with embedded timestamps for easier log correlation.
     """
 
@@ -200,10 +202,10 @@ class TimestampedJourneyIDManager(JourneyIDManager):
 
     def create_journey_id(self, track_id: int) -> str:
         """Create timestamped journey ID.
-        
+
         Args:
             track_id: ByteTrack track ID
-            
+
         Returns:
             Timestamped journey ID
         """
@@ -227,7 +229,7 @@ class TimestampedJourneyIDManager(JourneyIDManager):
 
 class UUIDJourneyIDManager(JourneyIDManager):
     """Journey ID manager using UUIDs for maximum uniqueness.
-    
+
     Uses UUID4 for globally unique journey IDs, suitable for distributed systems.
     """
 
@@ -236,10 +238,10 @@ class UUIDJourneyIDManager(JourneyIDManager):
 
     def create_journey_id(self, track_id: int) -> str:
         """Create UUID-based journey ID.
-        
+
         Args:
             track_id: ByteTrack track ID
-            
+
         Returns:
             UUID-based journey ID
         """
