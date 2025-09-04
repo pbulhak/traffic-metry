@@ -557,8 +557,10 @@ class CalibrationUI:
             # Allow some tolerance for lines that intersect just outside the frame
             if self.reference_frame is not None:
                 margin = 50  # pixels tolerance outside image bounds
-                if (-margin <= ix <= self.reference_frame.shape[1] + margin and
-                    -margin <= iy <= self.reference_frame.shape[0] + margin):
+                if (
+                    -margin <= ix <= self.reference_frame.shape[1] + margin
+                    and -margin <= iy <= self.reference_frame.shape[0] + margin
+                ):
                     return True
 
         return False
