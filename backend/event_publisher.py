@@ -14,9 +14,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
-from pydantic import ValidationError
-
-from backend.api_models import WebSocketMessage
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +80,9 @@ class MessageCache:
         logger.debug(f"Cache miss for event key {cache_key}")
 
         try:
-            timestamp = datetime.now(UTC).isoformat()
-
-            ws_message = WebSocketMessage(type="event", data=event_data, timestamp=timestamp)
-            serialized_message = ws_message.model_dump_json()
+            # Directly serialize event data to JSON (no wrapper)
+            import json
+            serialized_message = json.dumps(event_data)
 
             # Add to cache
             self.cache[cache_key] = serialized_message
@@ -246,29 +242,6 @@ class ConnectionManager:
         """
         await websocket.send_text(cached_json)
 
-    async def _send_to_connection(self, websocket: WebSocket, message: dict[str, Any]) -> None:
-        """Send message to a specific WebSocket connection.
-
-        Args:
-            websocket: Target WebSocket connection
-            message: Message to send
-
-        Raises:
-            WebSocketDisconnect: If connection is closed
-            Exception: If send fails
-        """
-        try:
-            # Validate message format
-            ws_message = WebSocketMessage(**message)
-            await websocket.send_text(ws_message.model_dump_json())
-
-        except ValidationError as e:
-            logger.error(f"Invalid WebSocket message format: {e}")
-            raise
-
-        except Exception as e:
-            logger.debug(f"WebSocket send failed: {e}")
-            raise
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get message cache performance statistics.
@@ -281,6 +254,7 @@ class ConnectionManager:
     def clear_cache(self) -> None:
         """Clear message cache."""
         self.message_cache.clear()
+
 
 
 class EventPublisher:
@@ -403,6 +377,7 @@ class EventPublisher:
     def clear_cache(self) -> None:
         """Clear message cache."""
         self.connection_manager.clear_cache()
+
 
     async def _event_publisher_loop(self) -> None:
         """Background task for processing queued events."""
