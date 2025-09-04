@@ -104,11 +104,9 @@ class TrafficMetryProcessor:
             # Get last journey ID from database for continuation
             last_journey_id = await self.event_database.get_last_journey_id()
 
-            # Initialize tracking manager with track confirmation
+            # Initialize tracking manager with configurable ByteTrack parameters
             self.vehicle_tracking_manager = VehicleTrackingManager(
-                track_activation_threshold=0.5,  # Detection confidence threshold for track activation
-                lost_track_buffer=30,  # Number of frames to buffer when a track is lost
-                minimum_matching_threshold=0.8,  # Threshold for matching tracks with detections
+                config=self.config.model,  # ByteTrack parameters from config
                 frame_rate=30,  # Video frame rate for prediction algorithms
                 update_interval_seconds=1.0,  # WebSocket update interval
                 start_journey_counter=last_journey_id,  # Continue journey IDs from database

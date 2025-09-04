@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import supervision as sv
 
+from backend.config import ModelSettings
 from backend.detection_models import DetectionResult
 from backend.direction_analyzer import DynamicDirectionAnalyzer
 from backend.journey_manager import JourneyIDManager
@@ -161,20 +162,16 @@ class VehicleTrackingManager:
 
     def __init__(
         self,
-        track_activation_threshold: float = 0.5,
-        lost_track_buffer: int = 30,
-        minimum_matching_threshold: float = 0.8,
+        config: "ModelSettings",
         frame_rate: int = 30,
         update_interval_seconds: float = 1.0,
         start_journey_counter: int = 0,
-        minimum_consecutive_frames: int = 3,
+        minimum_consecutive_frames: int = 5,
     ):
-        """Initialize vehicle tracking manager with track confirmation.
+        """Initialize vehicle tracking manager with configurable ByteTrack parameters.
 
         Args:
-            track_activation_threshold: Detection confidence threshold for track activation
-            lost_track_buffer: Number of frames to buffer when a track is lost
-            minimum_matching_threshold: Threshold for matching tracks with detections
+            config: Model settings with ByteTrack optimization parameters
             frame_rate: Video frame rate for prediction algorithms
             update_interval_seconds: Minimum interval between VehicleUpdated events
             start_journey_counter: Starting counter for journey ID continuation
@@ -182,12 +179,15 @@ class VehicleTrackingManager:
         """
         try:
             self.tracker = sv.ByteTrack(
-                track_activation_threshold=track_activation_threshold,
-                lost_track_buffer=lost_track_buffer,
-                minimum_matching_threshold=minimum_matching_threshold,
+                track_activation_threshold=config.track_thresh,  # Z konfiguracji
+                lost_track_buffer=config.track_buffer,          # Z konfiguracji  
+                minimum_matching_threshold=config.match_thresh,   # Z konfiguracji
                 frame_rate=frame_rate,
                 minimum_consecutive_frames=minimum_consecutive_frames,  # Track confirmation
             )
+            
+            # Store config for memory management
+            self.config = config
 
             # Vehicle lifecycle management
             self.active_vehicles: dict[int, VehicleTrackingState] = {}
@@ -209,10 +209,10 @@ class VehicleTrackingManager:
             self.total_journeys_completed = 0
 
             logger.info(
-                f"VehicleTrackingManager initialized with track confirmation: "
-                f"activation_threshold={track_activation_threshold}, "
-                f"lost_buffer={lost_track_buffer}, "
-                f"matching_threshold={minimum_matching_threshold}, "
+                f"VehicleTrackingManager initialized with configurable ByteTrack: "
+                f"activation_threshold={config.track_thresh}, "
+                f"lost_buffer={config.track_buffer}, "
+                f"matching_threshold={config.match_thresh}, "
                 f"update_interval={update_interval_seconds}s, "
                 f"track_confirmation_threshold={minimum_consecutive_frames} frames"
             )

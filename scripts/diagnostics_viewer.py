@@ -285,12 +285,10 @@ class ProcessingThread:
             await self.detector.initialize()
             logger.info("Async detector initialized in processing thread")
 
-            # Initialize tracking manager
+            # Initialize tracking manager with configurable parameters
             last_journey_id = await self.event_database.get_last_journey_id()
             self.vehicle_tracking_manager = VehicleTrackingManager(
-                track_activation_threshold=0.5,
-                lost_track_buffer=30,
-                minimum_matching_threshold=0.8,
+                config=self.config.model,  # ByteTrack parameters from config
                 frame_rate=30,
                 update_interval_seconds=1.0,
                 start_journey_counter=last_journey_id,
