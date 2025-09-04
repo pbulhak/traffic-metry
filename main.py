@@ -22,11 +22,12 @@ from pathlib import Path
 
 from numpy.typing import NDArray
 
-from backend.camera_stream import CameraConnectionError, CameraStream
+from backend.async_components import AsyncCameraStream, AsyncVehicleDetector
+from backend.camera_stream import CameraConnectionError
 from backend.candidate_saver import EventDrivenCandidateSaver
 from backend.config import Settings, get_config
 from backend.database import DatabaseError, EventDatabase
-from backend.detector import DetectionError, ModelLoadError, VehicleDetector
+from backend.detector import DetectionError, ModelLoadError
 from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
@@ -59,12 +60,25 @@ class TrafficMetryProcessor:
         self.detection_count = 0
         self.event_count = 0
 
+        # Performance tracking for headless monitoring
+        self.camera_fps_tracker = {
+            'last_frame_time': 0.0,
+            'frame_intervals': [],
+            'window_size': 30  # Rolling average over 30 frames
+        }
+        
+        self.processing_fps_tracker = {
+            'processing_times': [],
+            'window_size': 30  # Rolling average over 30 processing cycles
+        }
+
         # Initialize components
         logger.info("Initializing TrafficMetry components...")
 
         try:
-            self.camera = CameraStream(config.camera)
-            self.detector = VehicleDetector(config.model)
+            # Initialize async components with thread pools
+            self.camera = AsyncCameraStream(config.camera, max_workers=2)
+            self.detector = AsyncVehicleDetector(config.model, max_workers=3)
 
             # Initialize database first to get journey continuation
             self.event_database = EventDatabase(config.database)
@@ -158,17 +172,38 @@ class TrafficMetryProcessor:
             await self.event_database.connect()
             logger.info("Database connection established")
 
+            # Initialize async detector
+            await self.detector.initialize()
+            logger.info("Async vehicle detector initialized")
+
             # Initialize tracking manager with journey ID continuation
             await self._initialize_tracking_manager()
             logger.info("Vehicle tracking manager initialized with journey ID continuation")
 
-            with self.camera:
-                logger.info("Camera connection established")
+            # Connect to async camera stream
+            async with self.camera:
+                logger.info("Async camera stream connected")
 
                 while self.running:
                     try:
-                        # Capture frame
-                        frame = self.camera.get_frame()
+                        # 📊 PERFORMANCE TRACKING: Start processing cycle
+                        processing_start = time.time()
+
+                        # 📊 CAMERA FPS TRACKING: Measure frame interval
+                        camera_frame_start = time.time()
+                        frame = await self.camera.get_frame()
+                        
+                        # Track camera FPS (frame delivery rate)
+                        if self.camera_fps_tracker['last_frame_time'] > 0:
+                            frame_interval = camera_frame_start - self.camera_fps_tracker['last_frame_time']
+                            self.camera_fps_tracker['frame_intervals'].append(frame_interval)
+                            
+                            # Maintain rolling window
+                            if len(self.camera_fps_tracker['frame_intervals']) > self.camera_fps_tracker['window_size']:
+                                self.camera_fps_tracker['frame_intervals'].pop(0)
+                        
+                        self.camera_fps_tracker['last_frame_time'] = camera_frame_start
+                        
                         if frame is None:
                             logger.warning("No frame received from camera")
                             await asyncio.sleep(0.1)
@@ -176,8 +211,8 @@ class TrafficMetryProcessor:
 
                         self.frame_count += 1
 
-                        # Detect vehicles (raw detections from YOLO)
-                        raw_detections = self.detector.detect_vehicles(frame)
+                        # Detect vehicles asynchronously (raw detections from YOLO)
+                        raw_detections = await self.detector.detect_vehicles(frame)
                         self.detection_count += len(raw_detections)
 
                         # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection
@@ -188,6 +223,15 @@ class TrafficMetryProcessor:
 
                         # Process vehicle lifecycle events (not detections!)
                         await self._process_vehicle_events(vehicle_events)
+                        
+                        # 📊 PROCESSING FPS TRACKING: Complete cycle timing
+                        processing_end = time.time()
+                        processing_time = processing_end - processing_start
+                        self.processing_fps_tracker['processing_times'].append(processing_time)
+                        
+                        # Maintain rolling window for processing times
+                        if len(self.processing_fps_tracker['processing_times']) > self.processing_fps_tracker['window_size']:
+                            self.processing_fps_tracker['processing_times'].pop(0)
 
                         # Log statistics periodically
                         current_time = time.time()
@@ -274,7 +318,7 @@ class TrafficMetryProcessor:
                 # await self._publish_websocket_event(event.to_websocket_format())
 
     def _log_statistics(self, elapsed_time: float) -> None:
-        """Log performance statistics.
+        """Log comprehensive performance statistics with headless monitoring metrics.
 
         Args:
             elapsed_time: Elapsed time since start in seconds
@@ -284,20 +328,58 @@ class TrafficMetryProcessor:
             (self.detection_count / elapsed_time) * 60 if elapsed_time > 0 else 0
         )
 
+        # 📊 CALCULATE CAMERA FPS (frame delivery rate from AsyncCameraStream)
+        camera_fps = 0.0
+        if len(self.camera_fps_tracker['frame_intervals']) > 1:
+            avg_frame_interval = sum(self.camera_fps_tracker['frame_intervals']) / len(self.camera_fps_tracker['frame_intervals'])
+            camera_fps = 1.0 / avg_frame_interval if avg_frame_interval > 0 else 0.0
+
+        # 📊 CALCULATE PROCESSING FPS (complete processing cycle rate)  
+        processing_fps = 0.0
+        if len(self.processing_fps_tracker['processing_times']) > 1:
+            avg_processing_time = sum(self.processing_fps_tracker['processing_times']) / len(self.processing_fps_tracker['processing_times'])
+            processing_fps = 1.0 / avg_processing_time if avg_processing_time > 0 else 0.0
+
+        # 📊 CALCULATE EFFICIENCY RATIO (how well we utilize camera stream)
+        efficiency_ratio = 0.0
+        if camera_fps > 0:
+            efficiency_ratio = (processing_fps / camera_fps) * 100
+
         assert self.vehicle_tracking_manager is not None
         tracking_stats = self.vehicle_tracking_manager.get_tracking_stats()
 
+        # 🚀 ENHANCED PERFORMANCE LOGGING with headless monitoring
         logger.info(
-            f"Statistics - Frames: {self.frame_count}, "
-            f"Detections: {self.detection_count}, "
-            f"Events: {self.event_count}, "
-            f"FPS: {fps:.1f}, "
-            f"Det/min: {detections_per_minute:.1f}, "
-            f"Active vehicles: {tracking_stats['active_vehicles']}, "
-            f"Total vehicles: {tracking_stats['total_vehicles_tracked']}, "
-            f"Journeys completed: {tracking_stats['total_journeys_completed']}, "
-            f"Candidates saved: {self.event_candidate_saver.get_statistics()['saved_candidates']}"
+            f"🎯 PERFORMANCE METRICS | "
+            f"Camera FPS: {camera_fps:.1f}, "
+            f"Processing FPS: {processing_fps:.1f}, "
+            f"Pipeline Efficiency: {efficiency_ratio:.1f}% | "
+            f"Overall FPS: {fps:.1f}, "
+            f"Frames: {self.frame_count}, "
+            f"Detections: {self.detection_count} ({detections_per_minute:.1f}/min) | "
+            f"🚗 TRACKING | "
+            f"Active: {tracking_stats['active_vehicles']}, "
+            f"Total: {tracking_stats['total_vehicles_tracked']}, "
+            f"Journeys: {tracking_stats['total_journeys_completed']}, "
+            f"Events: {self.event_count} | "
+            f"💾 STORAGE | "
+            f"Candidates: {self.event_candidate_saver.get_statistics()['saved_candidates']}"
         )
+
+        # 📊 ADDITIONAL DETAILED METRICS (every 5 minutes for deep analysis)
+        if elapsed_time > 0 and int(elapsed_time) % 300 == 0:  # Every 5 minutes
+            frame_intervals_count = len(self.camera_fps_tracker['frame_intervals'])
+            processing_times_count = len(self.processing_fps_tracker['processing_times'])
+            
+            logger.info(
+                f"📊 DEEP METRICS (5min) | "
+                f"Camera samples: {frame_intervals_count}/{self.camera_fps_tracker['window_size']}, "
+                f"Processing samples: {processing_times_count}/{self.processing_fps_tracker['window_size']} | "
+                f"Avg frame interval: {avg_frame_interval*1000:.1f}ms, "
+                f"Avg processing time: {avg_processing_time*1000:.1f}ms | "
+                f"Thread pools: Camera={self.camera.get_camera_info().get('worker_threads', 'N/A')}, "
+                f"Detector={self.detector.get_model_info().get('async_worker_threads', 'N/A')}"
+            )
 
     def _log_final_statistics(self) -> None:
         """Log final statistics on shutdown."""
