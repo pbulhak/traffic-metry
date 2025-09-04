@@ -681,7 +681,7 @@ class GUIThread:
 
             # Add labels based on thread-safe control state
             if control_state.show_track_ids and hasattr(detection, "track_id"):
-                label = f"ID: {detection.track_id}"
+                label = f"Track: {detection.track_id}"
                 cv2.putText(
                     display_frame,
                     label,

@@ -244,14 +244,14 @@ class EventDatabase:
                 self.saved_count += 1
 
             logger.debug(
-                f"Vehicle journey {journey.track_id} saved: "
+                f"Vehicle journey {journey.journey_id} saved: "
                 f"{journey.journey_duration_seconds:.1f}s, "
                 f"{journey.total_detections} detections"
             )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to save vehicle journey {journey.track_id}: {e}")
+            logger.error(f"Failed to save vehicle journey {journey.journey_id}: {e}")
             return False
 
     def _save_journey_sync(self, journey_data: tuple, conn: sqlite3.Connection) -> None:

@@ -285,7 +285,7 @@ class TrafficMetryProcessor:
             if isinstance(event, VehicleEntered):
                 # Vehicle entered tracking area with dynamic direction detection
                 logger.info(
-                    f"🚗 Vehicle {event.journey_id} (Track {event.track_id}) ({event.vehicle_type}) entered at "
+                    f"🚗 Vehicle {event.journey_id} ({event.vehicle_type}) entered at "
                     f"position ({event.detection.centroid[0]}, {event.detection.centroid[1]})"
                 )
 
@@ -295,7 +295,7 @@ class TrafficMetryProcessor:
             elif isinstance(event, VehicleUpdated):
                 # Vehicle position updated with dynamic direction analysis
                 logger.debug(
-                    f"📍 Vehicle {event.journey_id} (Track {event.track_id}) updated: "
+                    f"📍 Vehicle {event.journey_id} updated: "
                     f"direction {event.movement_direction}, "
                     f"confidence {event.current_confidence:.2f}, "
                     f"detections {event.total_detections_so_far}"
@@ -313,16 +313,16 @@ class TrafficMetryProcessor:
                     if success:
                         self.event_count += 1
                         logger.info(
-                            f"🏁 Vehicle {event.track_id} journey completed and saved: "
+                            f"🏁 Vehicle {journey.journey_id} journey completed and saved: "
                             f"{journey.journey_duration_seconds:.1f}s, "
                             f"{journey.total_detections} detections, "
                             f"best confidence {journey.best_confidence:.2f}"
                         )
                     else:
-                        logger.error(f"Failed to save journey for vehicle {event.track_id}")
+                        logger.error(f"Failed to save journey for vehicle {event.journey_id}")
 
                 except DatabaseError as e:
-                    logger.error(f"Database error saving vehicle {event.track_id} journey: {e}")
+                    logger.error(f"Database error saving vehicle {event.journey_id} journey: {e}")
 
                 # Future: Send WebSocket exit notification
                 # await self._publish_websocket_event(event.to_websocket_format())
