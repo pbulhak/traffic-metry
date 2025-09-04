@@ -926,8 +926,9 @@ class MultiThreadedDiagnosticsViewer:
             total_vehicles = tracking_stats.get("total_vehicles_tracked", 0)
             complete_journeys = tracking_stats.get("total_journeys_completed", 0)
 
-            # Get candidate statistics (simplified - we don't have direct access to candidate saver stats)
-            candidates_saved = 0  # Would need to track this separately in the future
+            # Get candidate statistics from event-driven candidate saver
+            candidate_stats = self.event_candidate_saver.get_statistics()
+            candidates_saved = candidate_stats.get("saved_candidates", 0)
 
             # Log session summary in the same format as original diagnostics viewer
             logger.info("=== DIAGNOSTICS SESSION SUMMARY ===")
