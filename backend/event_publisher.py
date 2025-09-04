@@ -294,9 +294,10 @@ class EventPublisher:
             cache_size: Maximum number of cached serialized messages
         """
         self.connection_manager = ConnectionManager(max_connections, cache_size)
-        self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)  # Reduced for better memory management
         self.is_running = False
         self.publisher_task: asyncio.Task | None = None
+        self.dropped_events_count = 0  # Track dropped events for monitoring
 
     async def start(self) -> None:
         """Start the event publisher background task."""
@@ -323,21 +324,39 @@ class EventPublisher:
         logger.info("EventPublisher stopped")
 
     async def publish_event(self, event_data: dict[str, Any]) -> bool:
-        """Queue a vehicle event for broadcasting.
+        """Queue event with overflow protection and oldest-event-dropping strategy.
 
         Args:
             event_data: Vehicle event data in API v2.3 format
 
         Returns:
-            True if event was queued successfully, False if queue is full
+            True if event was queued successfully, False if queue was full
         """
         try:
+            # Try to add event to queue without blocking
             self.event_queue.put_nowait(event_data)
             return True
 
         except asyncio.QueueFull:
-            logger.warning("Event queue is full, dropping event")
-            return False
+            # Advanced overflow protection: drop oldest event and add new one
+            try:
+                # Remove the oldest event from queue
+                oldest_event = self.event_queue.get_nowait()
+                # Add the new event
+                self.event_queue.put_nowait(event_data)
+                
+                self.dropped_events_count += 1
+                logger.warning(
+                    f"Event queue full, dropped oldest event (type: {oldest_event.get('type', 'unknown')}). "
+                    f"Total dropped: {self.dropped_events_count}"
+                )
+                return True
+                
+            except (asyncio.QueueEmpty, asyncio.QueueFull):
+                # Fallback: just drop the new event if we can't manage the queue
+                self.dropped_events_count += 1
+                logger.warning(f"Failed to manage event queue overflow. Total dropped: {self.dropped_events_count}")
+                return False
 
     async def connect_client(self, websocket: WebSocket) -> bool:
         """Connect a new WebSocket client.
@@ -365,6 +384,21 @@ class EventPublisher:
             Dictionary with cache performance statistics
         """
         return self.connection_manager.get_cache_stats()
+
+    def get_queue_stats(self) -> dict[str, Any]:
+        """Get event queue statistics for monitoring.
+
+        Returns:
+            Dictionary with queue performance statistics
+        """
+        return {
+            "queue_size": self.event_queue.qsize(),
+            "queue_maxsize": self.event_queue.maxsize,
+            "queue_utilization": (self.event_queue.qsize() / self.event_queue.maxsize) * 100,
+            "dropped_events_total": self.dropped_events_count,
+            "active_connections": len(self.connection_manager.active_connections),
+            "max_connections": self.connection_manager.max_connections
+        }
 
     def clear_cache(self) -> None:
         """Clear message cache."""

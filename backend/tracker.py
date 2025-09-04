@@ -194,6 +194,12 @@ class VehicleTrackingManager:
             self.update_interval_seconds = update_interval_seconds
             self.last_update_times: dict[int, float] = {}
 
+            # Memory management parameters
+            self.max_active_vehicles = config.max_tracks
+            self.max_history_per_vehicle = 30  # Max 30 pozycji w historii
+            self.memory_cleanup_interval = 100  # Co 100 aktualizacji
+            self.memory_cleanup_counter = 0
+
             # Journey ID management with continuation support
             self.journey_id_manager = JourneyIDManager(start_counter=start_journey_counter)
 
@@ -280,6 +286,19 @@ class VehicleTrackingManager:
         events.extend(
             self._generate_lifecycle_events(tracked_detections, current_timestamp, current_frame)
         )
+
+        # Periodic memory cleanup for performance optimization
+        if self._should_cleanup_memory():
+            cleanup_stats = self._cleanup_memory()
+            self.memory_cleanup_counter = 0  # Reset counter
+            
+            if any(cleanup_stats.values()):  # Log only if something was cleaned
+                logger.debug(
+                    f"🧹 Memory cleanup completed: "
+                    f"history_trimmed={cleanup_stats['history_trimmed']}, "
+                    f"vehicles_forced_exit={cleanup_stats['vehicles_forced_exit']}, "
+                    f"pending_tracks_cleaned={cleanup_stats['pending_tracks_cleaned']}"
+                )
 
         return tracked_detections, events
 
@@ -570,3 +589,88 @@ class VehicleTrackingManager:
         """Cleanup stale journey IDs that no longer have active vehicles."""
         active_track_ids = set(self.active_vehicles.keys())
         return self.journey_id_manager.cleanup_stale_journeys(active_track_ids)
+
+    def _cleanup_memory(self) -> dict[str, int]:
+        """Periodic memory cleanup for performance optimization.
+        
+        Returns:
+            Dictionary with cleanup operation statistics
+        """
+        cleanup_stats = {
+            "history_trimmed": 0,
+            "vehicles_forced_exit": 0,
+            "pending_tracks_cleaned": 0
+        }
+
+        # 1. Limit position history for active vehicles
+        for vehicle in self.active_vehicles.values():
+            if len(vehicle.position_history) > self.max_history_per_vehicle:
+                vehicle.position_history = vehicle.position_history[-self.max_history_per_vehicle:]
+                cleanup_stats["history_trimmed"] += 1
+
+        # 2. Limit number of active vehicles (remove oldest ones)
+        if len(self.active_vehicles) > self.max_active_vehicles:
+            # Sort vehicles by last update timestamp
+            sorted_vehicles = sorted(
+                self.active_vehicles.items(),
+                key=lambda x: x[1].last_update_timestamp
+            )
+            
+            # Remove oldest vehicles exceeding the limit
+            excess_count = len(self.active_vehicles) - self.max_active_vehicles
+            for track_id, vehicle in sorted_vehicles[:excess_count]:
+                self._force_exit_vehicle(track_id, "memory_cleanup")
+                cleanup_stats["vehicles_forced_exit"] += 1
+
+        # 3. Clean up excessively long pending tracks
+        max_pending_age = 10  # Max 10 detections in pending
+        tracks_to_remove = []
+        for track_id, detections in self.pending_tracks.items():
+            if len(detections) > max_pending_age:
+                tracks_to_remove.append(track_id)
+        
+        for track_id in tracks_to_remove:
+            del self.pending_tracks[track_id]
+            cleanup_stats["pending_tracks_cleaned"] += 1
+
+        return cleanup_stats
+
+    def _force_exit_vehicle(self, track_id: int, reason: str) -> None:
+        """Force vehicle journey termination for memory management.
+        
+        Args:
+            track_id: Track ID to terminate
+            reason: Reason for termination (e.g. "memory_cleanup")
+        """
+        if track_id not in self.active_vehicles:
+            return
+
+        vehicle_state = self.active_vehicles.pop(track_id)
+        self.last_update_times.pop(track_id, None)
+        
+        # Increment completed journeys counter
+        self.total_journeys_completed += 1
+
+        # Release journey ID
+        journey_id = self.journey_id_manager.release_journey_id(track_id)
+
+        logger.info(
+            f"🧹 Forced exit for memory cleanup: {journey_id or vehicle_state.journey_id} "
+            f"(Track {track_id}) - reason: {reason}, "
+            f"duration: {vehicle_state.journey_duration_seconds:.1f}s, "
+            f"detections: {vehicle_state.total_detections}"
+        )
+
+    def _should_cleanup_memory(self) -> bool:
+        """Check if memory cleanup should be performed.
+        
+        Returns:
+            True if cleanup should be performed
+        """
+        self.memory_cleanup_counter += 1
+        
+        # Regular cleanup every X updates or when too many active vehicles
+        return (
+            self.memory_cleanup_counter >= self.memory_cleanup_interval or
+            len(self.active_vehicles) > self.max_active_vehicles * 1.2  # 20% over limit
+        )
