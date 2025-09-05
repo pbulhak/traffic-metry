@@ -14,10 +14,11 @@ Usage:
 
 Controls:
     'q' - Quit application
+    '1' - Toggle detection processing (ON/OFF)
+    '2' - Toggle tracking processing (ON/OFF)
     'd' - Toggle database saving (ON/OFF)
     'c' - Toggle candidate image saving (ON/OFF)
     'p' - Pause/Resume processing
-    'l' - Toggle lane boundary display
     't' - Toggle track ID display
     'f' - Toggle confidence display
     'h' - Show help in terminal
@@ -62,6 +63,31 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# UNIFIED HELP SYSTEM - SINGLE SOURCE OF TRUTH FOR ALL CONTROLS
+# ============================================================================
+
+CONTROLS_HELP = {
+    "q": "Quit application",
+    "1": "Toggle detection processing (ON/OFF)",
+    "2": "Toggle tracking processing (ON/OFF)", 
+    "d": "Toggle database saving (journey storage)",
+    "c": "Toggle candidate image saving",
+    "p": "Pause/Resume processing (GUI continues)",
+    "t": "Toggle track ID display",
+    "f": "Toggle confidence display",
+    "h": "Show help"
+}
+
+HELP_HEADER = "TrafficMetry Interactive Diagnostics Laboratory"
+HELP_DESCRIPTION = [
+    "🚀 Multi-threaded architecture for optimal performance",
+    "🎯 Processing & GUI threads running independently", 
+    "🔧 Real-time toggle controls for performance analysis",
+    "⚡ Expected: ~60 FPS GUI, ~25-30 FPS processing"
+]
 
 
 @dataclass
@@ -113,6 +139,8 @@ class SharedControlState:
 
     database_enabled: bool = True
     candidates_enabled: bool = True
+    detection_enabled: bool = True
+    tracking_enabled: bool = True
     show_track_ids: bool = True
     show_confidence: bool = True
     processing_paused: bool = False
@@ -186,6 +214,8 @@ class ThreadSafeDataManager:
             return SharedControlState(
                 database_enabled=self._control_state.database_enabled,
                 candidates_enabled=self._control_state.candidates_enabled,
+                detection_enabled=self._control_state.detection_enabled,
+                tracking_enabled=self._control_state.tracking_enabled,
                 show_track_ids=self._control_state.show_track_ids,
                 show_confidence=self._control_state.show_confidence,
                 processing_paused=self._control_state.processing_paused,
@@ -355,21 +385,32 @@ class ProcessingThread:
 
                         self.frame_count += 1
 
-                        # Detect vehicles with timing
+                        # Conditional detection based on control state
                         detection_start = time.time()
-                        raw_detections = await self.detector.detect_vehicles(frame)
-                        detection_time = time.time() - detection_start
-                        self._track_bottleneck_metric("detection_times", detection_time)
-                        self.detection_count += len(raw_detections)
+                        if control_state.detection_enabled:
+                            raw_detections = await self.detector.detect_vehicles(frame)
+                            detection_time = time.time() - detection_start
+                            self._track_bottleneck_metric("detection_times", detection_time)
+                            self.detection_count += len(raw_detections)
+                        else:
+                            raw_detections = []  # Skip detection entirely
+                            detection_time = 0.0
+                            self._track_bottleneck_metric("detection_times", detection_time)
 
-                        # Update tracking with timing
+                        # Conditional tracking based on control state
                         tracking_start = time.time()
-                        assert self.vehicle_tracking_manager is not None
-                        tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                            raw_detections, current_frame=frame
-                        )
-                        tracking_time = time.time() - tracking_start
-                        self._track_bottleneck_metric("tracking_times", tracking_time)
+                        if control_state.tracking_enabled and raw_detections:
+                            assert self.vehicle_tracking_manager is not None
+                            tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
+                                raw_detections, current_frame=frame
+                            )
+                            tracking_time = time.time() - tracking_start
+                            self._track_bottleneck_metric("tracking_times", tracking_time)
+                        else:
+                            tracked_detections = []
+                            vehicle_events = []
+                            tracking_time = 0.0
+                            self._track_bottleneck_metric("tracking_times", tracking_time)
 
                         # Conditional processing based on control state
                         if control_state.database_enabled:
@@ -601,6 +642,16 @@ class GUIThread:
                     logger.info("GUI thread: Quit requested")
                     self.shutdown_coordinator.request_shutdown()
                     break
+                elif key == ord("1"):
+                    # Toggle detection processing
+                    new_state = not self.data_manager.get_control_state().detection_enabled
+                    self.data_manager.update_control_state(detection_enabled=new_state)
+                    logger.info(f"🎯 Detection: {'ENABLED' if new_state else 'DISABLED'}")
+                elif key == ord("2"):
+                    # Toggle tracking processing
+                    new_state = not self.data_manager.get_control_state().tracking_enabled
+                    self.data_manager.update_control_state(tracking_enabled=new_state)
+                    logger.info(f"🔄 Tracking: {'ENABLED' if new_state else 'DISABLED'}")
                 elif key == ord("d"):
                     # Toggle database saving
                     new_state = not self.data_manager.get_control_state().database_enabled
@@ -762,14 +813,17 @@ class GUIThread:
 
         # Status indicators
         db_status = "ON" if control_state.database_enabled else "OFF"
-        cand_status = "ON" if control_state.candidates_enabled else "OFF"
+        cand_status = "ON" if control_state.candidates_enabled else "OFF" 
+        detect_status = "ON" if control_state.detection_enabled else "OFF"
+        track_status = "ON" if control_state.tracking_enabled else "OFF"
         proc_status = "PAUSED" if control_state.processing_paused else "ACTIVE"
 
         stats_lines = [
             f"FPS: GUI {gui_fps:.1f} | Processing {processing_fps:.1f} | Status: {proc_status}",
             f"Frames: {frame_count} | Detections: {detection_count}",
             f"Active: {tracking_stats.get('active_vehicles', 0)} | Journeys: {tracking_stats.get('total_journeys_completed', 0)}",
-            f"DB: {db_status} | Candidates: {cand_status} | Press 'h' for help",
+            f"Detection: {detect_status} | Tracking: {track_status} | DB: {db_status} | Candidates: {cand_status}",
+            f"Controls: 1=Detection, 2=Tracking, d=DB, c=Candidates, p=Pause | 'h' for help",
         ]
 
         for i, line in enumerate(stats_lines):
@@ -786,24 +840,24 @@ class GUIThread:
         return frame
 
     def _display_help(self) -> None:
-        """Display help message with all interactive controls."""
-        help_text = """
+        """Display unified help message with all interactive controls."""
+        help_text = f"""
         ╔══════════════════════════════════════════════════════════════╗
-        ║           DIAGNOSTICS VIEWER CONTROLS (MULTI-THREADED)      ║
+        ║                    {HELP_HEADER}                     ║
         ╠══════════════════════════════════════════════════════════════╣
-        ║  'q' - Quit application                                      ║
-        ║  'd' - Toggle database saving (journey storage)             ║
-        ║  'c' - Toggle candidate image saving                        ║
-        ║  't' - Toggle track ID display                               ║
-        ║  'f' - Toggle confidence display                             ║
-        ║  'p' - Pause/Resume processing (GUI continues)              ║
-        ║  'h' - Show this help                                        ║
-        ║                                                              ║
-        ║  🚀 NEW: Multi-threaded architecture for optimal FPS        ║
-        ║  🎯 Processing & GUI threads running independently          ║
-        ║  🔧 Thread-safe control state management                    ║
-        ╚══════════════════════════════════════════════════════════════╝
-        """
+"""
+        # Add control descriptions from unified source
+        for key, description in CONTROLS_HELP.items():
+            help_text += f"        ║  '{key}' - {description:<54} ║\n"
+            
+        help_text += "        ║                                                              ║\n"
+        
+        # Add feature descriptions
+        for desc in HELP_DESCRIPTION:
+            help_text += f"        ║  {desc:<58} ║\n"
+            
+        help_text += "        ╚══════════════════════════════════════════════════════════════╝"
+        
         print(help_text)
 
 
@@ -889,22 +943,26 @@ class MultiThreadedDiagnosticsViewer:
             logger.info("=== MULTI-THREADED DIAGNOSTICS SESSION COMPLETE ===")
 
     def _display_startup_help(self) -> None:
-        """Display startup help and controls."""
-        help_text = """
+        """Display unified startup help and controls."""
+        help_text = f"""
     ╔══════════════════════════════════════════════════════════════╗
-    ║        MULTI-THREADED DIAGNOSTICS VIEWER (OPTIMIZED)        ║
+    ║                    {HELP_HEADER}                     ║
     ╠══════════════════════════════════════════════════════════════╣
-    ║  'q' - Quit application                                      ║
-    ║  't' - Toggle track ID display                               ║
-    ║  'f' - Toggle confidence display                             ║
-    ║  'p' - Pause processing (GUI continues at 60 FPS)           ║
-    ║  'h' - Show help again                                       ║
-    ║                                                              ║
-    ║  🚀 PERFORMANCE: Processing & GUI threads run independently ║
-    ║  🎯 EXPECTED: ~60 FPS GUI, ~25-30 FPS processing           ║
-    ║  📊 BENEFIT: No more async/OpenCV blocking issues          ║
-    ╚══════════════════════════════════════════════════════════════╝
-        """
+"""
+        # Add most important controls for startup
+        priority_keys = ['q', '1', '2', 'd', 'c', 'p', 'h']
+        for key in priority_keys:
+            if key in CONTROLS_HELP:
+                help_text += f"    ║  '{key}' - {CONTROLS_HELP[key]:<54} ║\n"
+            
+        help_text += "    ║                                                              ║\n"
+        
+        # Add feature descriptions
+        for desc in HELP_DESCRIPTION:
+            help_text += f"    ║  {desc:<58} ║\n"
+            
+        help_text += "    ╚══════════════════════════════════════════════════════════════╝"
+        
         print(help_text)
 
     def _display_final_summary(self) -> None:
@@ -928,8 +986,9 @@ class MultiThreadedDiagnosticsViewer:
             total_vehicles = tracking_stats.get("total_vehicles_tracked", 0)
             complete_journeys = tracking_stats.get("total_journeys_completed", 0)
 
-            # Get candidate statistics (simplified - we don't have direct access to candidate saver stats)
-            candidates_saved = 0  # Would need to track this separately in the future
+            # Get candidate statistics from event-driven candidate saver
+            candidate_stats = self.processing_thread.event_candidate_saver.get_statistics()
+            candidates_saved = candidate_stats.get("saved_candidates", 0)
 
             # Log session summary in the same format as original diagnostics viewer
             logger.info("=== DIAGNOSTICS SESSION SUMMARY ===")
