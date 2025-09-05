@@ -54,6 +54,32 @@ class ModelSettings(BaseModel):
     candidate_cleanup_interval: int = Field(
         default=1000, gt=0, le=10000, description="Cleanup check interval (every N saves)"
     )
+    
+    # ByteTrack optimization parameters
+    track_thresh: float = Field(
+        default=0.5,
+        ge=0.1,
+        le=0.9,
+        description="Threshold for track activation (wysokość progu aktywacji śledzenia)"
+    )
+    track_buffer: int = Field(
+        default=30,
+        ge=1,
+        le=120,
+        description="Buffer frames for lost tracks (bufor klatek dla zagubionych śladów)"
+    )
+    match_thresh: float = Field(
+        default=0.8,
+        ge=0.3,
+        le=0.99,
+        description="IOU threshold for matching (próg IOU dla dopasowania)"
+    )
+    max_tracks: int = Field(
+        default=100,
+        ge=10,
+        le=500,
+        description="Maximum concurrent tracks (maksymalna liczba jednoczesnych śladów)"
+    )
 
 
 class DatabaseSettings(BaseModel):

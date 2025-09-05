@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import supervision as sv
 
+from backend.config import ModelSettings
 from backend.detection_models import DetectionResult
 from backend.direction_analyzer import DynamicDirectionAnalyzer
 from backend.journey_manager import JourneyIDManager
@@ -161,20 +162,16 @@ class VehicleTrackingManager:
 
     def __init__(
         self,
-        track_activation_threshold: float = 0.5,
-        lost_track_buffer: int = 30,
-        minimum_matching_threshold: float = 0.8,
+        config: "ModelSettings",
         frame_rate: int = 30,
         update_interval_seconds: float = 1.0,
         start_journey_counter: int = 0,
-        minimum_consecutive_frames: int = 3,
+        minimum_consecutive_frames: int = 5,
     ):
-        """Initialize vehicle tracking manager with track confirmation.
+        """Initialize vehicle tracking manager with configurable ByteTrack parameters.
 
         Args:
-            track_activation_threshold: Detection confidence threshold for track activation
-            lost_track_buffer: Number of frames to buffer when a track is lost
-            minimum_matching_threshold: Threshold for matching tracks with detections
+            config: Model settings with ByteTrack optimization parameters
             frame_rate: Video frame rate for prediction algorithms
             update_interval_seconds: Minimum interval between VehicleUpdated events
             start_journey_counter: Starting counter for journey ID continuation
@@ -182,17 +179,26 @@ class VehicleTrackingManager:
         """
         try:
             self.tracker = sv.ByteTrack(
-                track_activation_threshold=track_activation_threshold,
-                lost_track_buffer=lost_track_buffer,
-                minimum_matching_threshold=minimum_matching_threshold,
+                track_activation_threshold=config.track_thresh,  # Z konfiguracji
+                lost_track_buffer=config.track_buffer,          # Z konfiguracji  
+                minimum_matching_threshold=config.match_thresh,   # Z konfiguracji
                 frame_rate=frame_rate,
                 minimum_consecutive_frames=minimum_consecutive_frames,  # Track confirmation
             )
+            
+            # Store config for memory management
+            self.config = config
 
             # Vehicle lifecycle management
             self.active_vehicles: dict[int, VehicleTrackingState] = {}
             self.update_interval_seconds = update_interval_seconds
             self.last_update_times: dict[int, float] = {}
+
+            # Memory management parameters
+            self.max_active_vehicles = config.max_tracks
+            self.max_history_per_vehicle = 30  # Max 30 pozycji w historii
+            self.memory_cleanup_interval = 100  # Co 100 aktualizacji
+            self.memory_cleanup_counter = 0
 
             # Journey ID management with continuation support
             self.journey_id_manager = JourneyIDManager(start_counter=start_journey_counter)
@@ -209,10 +215,10 @@ class VehicleTrackingManager:
             self.total_journeys_completed = 0
 
             logger.info(
-                f"VehicleTrackingManager initialized with track confirmation: "
-                f"activation_threshold={track_activation_threshold}, "
-                f"lost_buffer={lost_track_buffer}, "
-                f"matching_threshold={minimum_matching_threshold}, "
+                f"VehicleTrackingManager initialized with configurable ByteTrack: "
+                f"activation_threshold={config.track_thresh}, "
+                f"lost_buffer={config.track_buffer}, "
+                f"matching_threshold={config.match_thresh}, "
                 f"update_interval={update_interval_seconds}s, "
                 f"track_confirmation_threshold={minimum_consecutive_frames} frames"
             )
@@ -280,6 +286,19 @@ class VehicleTrackingManager:
         events.extend(
             self._generate_lifecycle_events(tracked_detections, current_timestamp, current_frame)
         )
+
+        # Periodic memory cleanup for performance optimization
+        if self._should_cleanup_memory():
+            cleanup_stats = self._cleanup_memory()
+            self.memory_cleanup_counter = 0  # Reset counter
+            
+            if any(cleanup_stats.values()):  # Log only if something was cleaned
+                logger.debug(
+                    f"🧹 Memory cleanup completed: "
+                    f"history_trimmed={cleanup_stats['history_trimmed']}, "
+                    f"vehicles_forced_exit={cleanup_stats['vehicles_forced_exit']}, "
+                    f"pending_tracks_cleaned={cleanup_stats['pending_tracks_cleaned']}"
+                )
 
         return tracked_detections, events
 
@@ -570,3 +589,88 @@ class VehicleTrackingManager:
         """Cleanup stale journey IDs that no longer have active vehicles."""
         active_track_ids = set(self.active_vehicles.keys())
         return self.journey_id_manager.cleanup_stale_journeys(active_track_ids)
+
+    def _cleanup_memory(self) -> dict[str, int]:
+        """Periodic memory cleanup for performance optimization.
+        
+        Returns:
+            Dictionary with cleanup operation statistics
+        """
+        cleanup_stats = {
+            "history_trimmed": 0,
+            "vehicles_forced_exit": 0,
+            "pending_tracks_cleaned": 0
+        }
+
+        # 1. Limit position history for active vehicles
+        for vehicle in self.active_vehicles.values():
+            if len(vehicle.position_history) > self.max_history_per_vehicle:
+                vehicle.position_history = vehicle.position_history[-self.max_history_per_vehicle:]
+                cleanup_stats["history_trimmed"] += 1
+
+        # 2. Limit number of active vehicles (remove oldest ones)
+        if len(self.active_vehicles) > self.max_active_vehicles:
+            # Sort vehicles by last update timestamp
+            sorted_vehicles = sorted(
+                self.active_vehicles.items(),
+                key=lambda x: x[1].last_update_timestamp
+            )
+            
+            # Remove oldest vehicles exceeding the limit
+            excess_count = len(self.active_vehicles) - self.max_active_vehicles
+            for track_id, vehicle in sorted_vehicles[:excess_count]:
+                self._force_exit_vehicle(track_id, "memory_cleanup")
+                cleanup_stats["vehicles_forced_exit"] += 1
+
+        # 3. Clean up excessively long pending tracks
+        max_pending_age = 10  # Max 10 detections in pending
+        tracks_to_remove = []
+        for track_id, detections in self.pending_tracks.items():
+            if len(detections) > max_pending_age:
+                tracks_to_remove.append(track_id)
+        
+        for track_id in tracks_to_remove:
+            del self.pending_tracks[track_id]
+            cleanup_stats["pending_tracks_cleaned"] += 1
+
+        return cleanup_stats
+
+    def _force_exit_vehicle(self, track_id: int, reason: str) -> None:
+        """Force vehicle journey termination for memory management.
+        
+        Args:
+            track_id: Track ID to terminate
+            reason: Reason for termination (e.g. "memory_cleanup")
+        """
+        if track_id not in self.active_vehicles:
+            return
+
+        vehicle_state = self.active_vehicles.pop(track_id)
+        self.last_update_times.pop(track_id, None)
+        
+        # Increment completed journeys counter
+        self.total_journeys_completed += 1
+
+        # Release journey ID
+        journey_id = self.journey_id_manager.release_journey_id(track_id)
+
+        logger.info(
+            f"🧹 Forced exit for memory cleanup: {journey_id or vehicle_state.journey_id} "
+            f"(Track {track_id}) - reason: {reason}, "
+            f"duration: {vehicle_state.journey_duration_seconds:.1f}s, "
+            f"detections: {vehicle_state.total_detections}"
+        )
+
+    def _should_cleanup_memory(self) -> bool:
+        """Check if memory cleanup should be performed.
+        
+        Returns:
+            True if cleanup should be performed
+        """
+        self.memory_cleanup_counter += 1
+        
+        # Regular cleanup every X updates or when too many active vehicles
+        return (
+            self.memory_cleanup_counter >= self.memory_cleanup_interval or
+            len(self.active_vehicles) > self.max_active_vehicles * 1.2  # 20% over limit
+        )

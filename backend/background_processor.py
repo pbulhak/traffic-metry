@@ -133,10 +133,11 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
             event: Vehicle event in WebSocket format
         """
         try:
+            logger.info(f"📤 Publishing event {event.get('eventId')} to WebSocket")  # DEBUG
             success = await event_publisher.publish_event(event)
             if success:
                 self.publishing_stats["events_published"] += 1
-                logger.debug(f"Event {event.get('eventId')} published to WebSocket clients")
+                logger.info(f"✅ Event {event.get('eventId')} published to WebSocket clients")
             else:
                 self.publishing_stats["publishing_errors"] += 1
                 logger.warning(f"Failed to queue event {event.get('eventId')} for publishing")

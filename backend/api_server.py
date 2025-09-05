@@ -58,29 +58,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Mount static files
-    try:
-        app.mount("/static", StaticFiles(directory="frontend"), name="static")
-    except RuntimeError:
-        logger.warning("Frontend directory not found, static files not mounted")
-
     return app
 
 
 app = create_app()
-
-
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend() -> HTMLResponse:
-    """Serve the main frontend application."""
-    try:
-        with open("frontend/index.html", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        return HTMLResponse(
-            content="<h1>TrafficMetry</h1><p>Frontend not yet available.</p>",
-            status_code=200,
-        )
 
 
 @app.websocket("/ws")
@@ -115,8 +96,31 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         logger.debug(f"WebSocket client {client_id} cleanup completed")
 
 
+# Mount the entire frontend directory to the root URL (MUST be last!)
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    # Development server
-    uvicorn.run("backend.api_server:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    # Development server with selective auto-reload
+    uvicorn.run(
+        "backend.api_server:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=["backend", "frontend"],  # Only watch backend and frontend folders
+        reload_excludes=[
+            "*.log",              # Ignore log files
+            "data/*",             # Ignore data directory
+            "*.db",               # Ignore database files
+            "*.sqlite*",          # Ignore SQLite files
+            "*/__pycache__/*",    # Ignore Python cache
+            "*.pyc",              # Ignore compiled Python files
+            ".git/*",             # Ignore git directory
+            ".venv/*",            # Ignore virtual environment
+            "*.tmp",              # Ignore temporary files
+            "unlabeled_images/*", # Ignore image storage
+        ],
+        log_level="info"
+    )

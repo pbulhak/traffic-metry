@@ -73,9 +73,3 @@ class VehicleEvent(BaseModel):
         json_encoders = {datetime: lambda v: v.isoformat()}
 
 
-class WebSocketMessage(BaseModel):
-    """WebSocket message wrapper."""
-
-    type: str = Field(..., description="Message type: event or status")
-    data: dict[str, Any] = Field(..., description="Message payload")
-    timestamp: str = Field(..., description="Message timestamp")
