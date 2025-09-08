@@ -1,4 +1,3 @@
-```gitignore
 # ## .gitignore for TrafficMetry Project ##
 
 *.md
@@ -74,7 +73,7 @@ htmlcov/
 # --- Logs & Configuration Files ---
 # Runtime logs
 *.log
-trafficmetry.log
+diagnostics*.log
 # Local configuration files (may contain sensitive data)
 config.ini
 
@@ -83,4 +82,8 @@ config.ini
 .DS_Store
 # Windows
 Thumbs.db
-```trafficmetry.log
+
+# --- Temporary Files ---
+# Commit message temp files
+/tmp/commit_message*.txt
+commit_message*.txt

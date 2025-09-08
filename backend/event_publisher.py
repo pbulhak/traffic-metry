@@ -10,7 +10,6 @@ import asyncio
 import contextlib
 import hashlib
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -318,14 +317,14 @@ class EventPublisher:
                 oldest_event = self.event_queue.get_nowait()
                 # Add the new event
                 self.event_queue.put_nowait(event_data)
-                
+
                 self.dropped_events_count += 1
                 logger.warning(
                     f"Event queue full, dropped oldest event (type: {oldest_event.get('type', 'unknown')}). "
                     f"Total dropped: {self.dropped_events_count}"
                 )
                 return True
-                
+
             except (asyncio.QueueEmpty, asyncio.QueueFull):
                 # Fallback: just drop the new event if we can't manage the queue
                 self.dropped_events_count += 1
