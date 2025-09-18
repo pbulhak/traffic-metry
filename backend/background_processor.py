@@ -14,7 +14,7 @@ from typing import Any
 
 from backend.config import Settings, get_config
 from backend.event_publisher import event_publisher
-from main import TrafficMetryProcessor
+from backend.processor import TrafficMetryProcessor
 
 logger = logging.getLogger(__name__)
 

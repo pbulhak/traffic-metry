@@ -162,7 +162,7 @@ class VehicleTrackingManager:
 
     def __init__(
         self,
-        config: "ModelSettings",
+        config: ModelSettings,
         frame_rate: int = 30,
         update_interval_seconds: float = 1.0,
         start_journey_counter: int = 0,
@@ -180,12 +180,12 @@ class VehicleTrackingManager:
         try:
             self.tracker = sv.ByteTrack(
                 track_activation_threshold=config.track_thresh,  # Z konfiguracji
-                lost_track_buffer=config.track_buffer,          # Z konfiguracji  
+                lost_track_buffer=config.track_buffer,          # Z konfiguracji
                 minimum_matching_threshold=config.match_thresh,   # Z konfiguracji
                 frame_rate=frame_rate,
                 minimum_consecutive_frames=minimum_consecutive_frames,  # Track confirmation
             )
-            
+
             # Store config for memory management
             self.config = config
 
@@ -291,7 +291,7 @@ class VehicleTrackingManager:
         if self._should_cleanup_memory():
             cleanup_stats = self._cleanup_memory()
             self.memory_cleanup_counter = 0  # Reset counter
-            
+
             if any(cleanup_stats.values()):  # Log only if something was cleaned
                 logger.debug(
                     f"🧹 Memory cleanup completed: "
@@ -592,7 +592,7 @@ class VehicleTrackingManager:
 
     def _cleanup_memory(self) -> dict[str, int]:
         """Periodic memory cleanup for performance optimization.
-        
+
         Returns:
             Dictionary with cleanup operation statistics
         """
@@ -615,10 +615,10 @@ class VehicleTrackingManager:
                 self.active_vehicles.items(),
                 key=lambda x: x[1].last_update_timestamp
             )
-            
+
             # Remove oldest vehicles exceeding the limit
             excess_count = len(self.active_vehicles) - self.max_active_vehicles
-            for track_id, vehicle in sorted_vehicles[:excess_count]:
+            for track_id, _vehicle in sorted_vehicles[:excess_count]:
                 self._force_exit_vehicle(track_id, "memory_cleanup")
                 cleanup_stats["vehicles_forced_exit"] += 1
 
@@ -628,7 +628,7 @@ class VehicleTrackingManager:
         for track_id, detections in self.pending_tracks.items():
             if len(detections) > max_pending_age:
                 tracks_to_remove.append(track_id)
-        
+
         for track_id in tracks_to_remove:
             del self.pending_tracks[track_id]
             cleanup_stats["pending_tracks_cleaned"] += 1
@@ -637,7 +637,7 @@ class VehicleTrackingManager:
 
     def _force_exit_vehicle(self, track_id: int, reason: str) -> None:
         """Force vehicle journey termination for memory management.
-        
+
         Args:
             track_id: Track ID to terminate
             reason: Reason for termination (e.g. "memory_cleanup")
@@ -647,7 +647,7 @@ class VehicleTrackingManager:
 
         vehicle_state = self.active_vehicles.pop(track_id)
         self.last_update_times.pop(track_id, None)
-        
+
         # Increment completed journeys counter
         self.total_journeys_completed += 1
 
@@ -663,12 +663,12 @@ class VehicleTrackingManager:
 
     def _should_cleanup_memory(self) -> bool:
         """Check if memory cleanup should be performed.
-        
+
         Returns:
             True if cleanup should be performed
         """
         self.memory_cleanup_counter += 1
-        
+
         # Regular cleanup every X updates or when too many active vehicles
         return (
             self.memory_cleanup_counter >= self.memory_cleanup_interval or

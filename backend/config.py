@@ -1,13 +1,11 @@
 """Configuration management for TrafficMetry application.
 
 This module provides centralized configuration management using Pydantic Settings.
-Supports loading from environment variables (.env) and INI files (config.ini).
+Supports loading from environment variables (.env).
 """
 
-import configparser
-from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
@@ -17,10 +15,6 @@ class ConfigurationError(Exception):
     pass
 
 
-class CalibrationDataMissingError(ConfigurationError):
-    """Raised when lane calibration data is missing or invalid."""
-
-    pass
 
 
 class CameraSettings(BaseModel):
@@ -54,7 +48,7 @@ class ModelSettings(BaseModel):
     candidate_cleanup_interval: int = Field(
         default=1000, gt=0, le=10000, description="Cleanup check interval (every N saves)"
     )
-    
+
     # ByteTrack optimization parameters
     track_thresh: float = Field(
         default=0.5,
@@ -99,23 +93,6 @@ class ServerSettings(BaseModel):
     )
 
 
-class LaneConfig(BaseModel):
-    """Lane configuration loaded from config.ini."""
-
-    lines: list[tuple[int, int, int, int]] = Field(
-        default_factory=list, description="Lane divider lines (x1,y1,x2,y2)"
-    )
-    directions: dict[int, str] = Field(default_factory=dict, description="Lane directions mapping")
-
-    @field_validator("directions")
-    @classmethod
-    def validate_directions(cls, v: dict[int, str]) -> dict[int, str]:
-        """Validate lane direction values."""
-        valid_directions = {"left", "right", "stationary"}
-        for lane_id, direction in v.items():
-            if direction not in valid_directions:
-                raise ValueError(f"Invalid direction '{direction}' for lane {lane_id}")
-        return v
 
 
 class LoggingSettings(BaseModel):
@@ -136,12 +113,9 @@ class Settings(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
-    # Lane configuration (loaded separately)
-    lanes: LaneConfig | None = Field(default=None)
 
     # Global settings
     debug: bool = Field(default=False, description="Enable debug mode")
-    config_file: str = Field(default="config.ini", description="Path to calibration config file")
 
     class Config:
         """Pydantic configuration."""
@@ -152,45 +126,6 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 
-def load_lane_config(config_path: str) -> LaneConfig | None:
-    """Load lane configuration from INI file.
-
-    Args:
-        config_path: Path to the config.ini file
-
-    Returns:
-        LaneConfig instance or None if file doesn't exist
-
-    Raises:
-        CalibrationDataMissingError: If config file exists but is invalid
-    """
-    config_file = Path(config_path)
-    if not config_file.exists():
-        return None
-
-    try:
-        parser = configparser.ConfigParser()
-        parser.read(config_path)
-
-        # Parse lane lines
-        lines = []
-        if parser.has_section("lanes"):
-            for key, value in parser["lanes"].items():
-                if key.startswith("line_"):
-                    coords = [int(x.strip()) for x in value.split(",")]
-                    if len(coords) == 4:
-                        lines.append((coords[0], coords[1], coords[2], coords[3]))
-
-        # Parse lane directions
-        directions = {}
-        if parser.has_section("directions"):
-            for lane_id, direction in parser["directions"].items():
-                directions[int(lane_id)] = direction.strip()
-
-        return LaneConfig(lines=lines, directions=directions)
-
-    except (configparser.Error, ValueError) as e:
-        raise CalibrationDataMissingError(f"Invalid calibration data in {config_path}: {e}") from e
 
 
 def load_config() -> Settings:
@@ -205,9 +140,6 @@ def load_config() -> Settings:
     try:
         # Load main settings from .env
         settings = Settings()
-
-        # Load lane configuration if available
-        settings.lanes = load_lane_config(settings.config_file)
 
         return settings
 

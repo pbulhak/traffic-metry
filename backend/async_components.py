@@ -129,7 +129,7 @@ class AsyncCameraStream:
                 import time
                 self.last_successful_frame_time = time.time()
                 self.current_reconnect_attempt = 0  # Reset on successful frame
-            
+
             return frame
 
         except Exception as e:
@@ -138,71 +138,70 @@ class AsyncCameraStream:
 
     async def get_frame_with_reconnect(self) -> NDArray | None:
         """Get frame with automatic reconnection on failure.
-        
+
         This method implements exponential backoff reconnection strategy
         when frame capture fails due to connection issues.
-        
+
         Returns:
             Video frame as numpy array, or None if all reconnect attempts failed
         """
-        import time
-        
+
         # First attempt - try normal frame capture
         frame = await self.get_frame()
         if frame is not None:
             return frame
-        
+
         # Check if reconnection should be attempted
         if not self._should_attempt_reconnect():
             return None
-        
+
         # Attempt reconnection with exponential backoff
         while self.current_reconnect_attempt < self.max_reconnect_attempts:
             self.current_reconnect_attempt += 1
-            
+
             # Calculate backoff delay with exponential growth
             delay = min(
                 self.reconnect_delay_base * (2 ** (self.current_reconnect_attempt - 1)),
                 self.reconnect_delay_max
             )
-            
+
             logger.warning(
                 f"Camera connection lost, attempting reconnect {self.current_reconnect_attempt}/{self.max_reconnect_attempts} "
                 f"after {delay:.1f}s delay"
             )
-            
+
             # Wait before reconnecting
             await asyncio.sleep(delay)
-            
+
             try:
                 # Disconnect and reconnect
                 await self.disconnect()
                 await self.connect()
-                
+
                 # Test the connection with frame capture
                 frame = await self.get_frame()
                 if frame is not None:
                     logger.info(f"Camera reconnected successfully after {self.current_reconnect_attempt} attempts")
                     return frame
-                    
+
             except Exception as e:
                 logger.error(f"Reconnection attempt {self.current_reconnect_attempt} failed: {e}")
-        
+
         # All reconnection attempts failed
         logger.error(f"Failed to reconnect camera after {self.max_reconnect_attempts} attempts")
         return None
-    
+
     def _should_attempt_reconnect(self) -> bool:
         """Check if reconnection should be attempted based on connection timeout.
-        
+
         Returns:
             True if reconnection should be attempted, False otherwise
         """
         import time
-        
+
         if not self.is_connected:
             return True
-            
+
         # Check if we've exceeded the connection timeout since last successful frame
         if self.last_successful_frame_time > 0:
             time_since_last_frame = time.time() - self.last_successful_frame_time
@@ -212,7 +211,7 @@ class AsyncCameraStream:
                     f"(timeout: {self.connection_timeout_seconds}s), initiating reconnect"
                 )
                 return True
-        
+
         return False
 
     def get_camera_info(self) -> dict[str, Any]:
@@ -222,7 +221,7 @@ class AsyncCameraStream:
 
         import time
         time_since_last_frame = (
-            time.time() - self.last_successful_frame_time 
+            time.time() - self.last_successful_frame_time
             if self.last_successful_frame_time > 0 else 0
         )
 

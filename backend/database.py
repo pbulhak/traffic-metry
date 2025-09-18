@@ -119,20 +119,20 @@ class EventDatabase:
                     vehicle_type TEXT NOT NULL,          -- VehicleType enum value
                     entry_timestamp REAL NOT NULL,      -- When vehicle entered tracking
                     exit_timestamp REAL,                -- When vehicle exited tracking
-                    
+
                     -- Clean position data (dedicated INTEGER columns)
                     entry_pos_x INTEGER NOT NULL,       -- Entry position X coordinate
                     entry_pos_y INTEGER NOT NULL,       -- Entry position Y coordinate
                     exit_pos_x INTEGER,                 -- Exit position X coordinate
                     exit_pos_y INTEGER,                 -- Exit position Y coordinate
-                    
+
                     movement_direction TEXT,            -- Dynamic movement direction
                     total_detections INTEGER NOT NULL,  -- Total detections for this vehicle
                     best_confidence REAL NOT NULL,      -- Highest confidence detection
                     best_bbox_json TEXT NOT NULL,       -- JSON [x1,y1,x2,y2] of best detection
                     journey_duration_seconds REAL NOT NULL, -- Total journey time
                     best_detection_timestamp REAL NOT NULL, -- Timestamp of best detection
-                    
+
                     created_at REAL NOT NULL DEFAULT (unixepoch())
                 )
             """)
@@ -354,8 +354,8 @@ class EventDatabase:
 
                 # Get the most recent journey_id
                 cursor.execute("""
-                    SELECT journey_id FROM vehicle_journeys 
-                    WHERE journey_id LIKE 'JOURNEY_%' 
+                    SELECT journey_id FROM vehicle_journeys
+                    WHERE journey_id LIKE 'JOURNEY_%'
                     ORDER BY id DESC LIMIT 1
                 """)
                 result = cursor.fetchone()
@@ -381,7 +381,7 @@ class EventDatabase:
                         logger.warning(f"⚠️ Failed to parse journey_id '{result[0]}': {e}")
                         return 0
                 else:
-                    logger.info(f"📊 No journeys found in database, starting from 0")
+                    logger.info("📊 No journeys found in database, starting from 0")
                     return 0
 
                 return 0
