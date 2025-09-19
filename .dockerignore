@@ -11,5 +11,3 @@ venv/
 tests/
 docs/
 scripts/diagnostics_viewer*
-README.md
-*.md
