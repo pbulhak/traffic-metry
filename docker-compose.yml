@@ -1,22 +1,22 @@
 version: '3.8'
 
 services:
-  trafficmetry:
+  app:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: trafficmetry-app
-    ports:
-      - "8000:8000"
+    environment:
+      - CAMERA_URL=${CAMERA_URL:-rtsp://camera-ip:554/stream}
+      - DATABASE_PATH=/app/data/trafficmetry.db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./data:/app/data
-      - ./frontend:/app/frontend
-    environment:
-      - CAMERA_URL=rtsp://camera-ip:554/stream
-      - DATABASE_PATH=/app/data/trafficmetry.db
+      - ./config.ini:/app/config.ini:ro
+      - ./.env:/app/.env:ro
     restart: unless-stopped
-    depends_on:
-      - nginx
+    networks:
+      - trafficmetry-network
 
   nginx:
     image: nginx:alpine
@@ -25,23 +25,18 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend:/usr/share/nginx/html/frontend:ro
     restart: unless-stopped
-
-  # Optional: Samba for local network file access
-  samba:
-    image: dperson/samba
-    container_name: trafficmetry-samba
-    ports:
-      - "139:139"
-      - "445:445"
-    volumes:
-      - ./data:/data
-    environment:
-      - SHARE=data;/data;yes;no;no;all;none;none;TrafficMetry Data
-    restart: unless-stopped
+    networks:
+      - trafficmetry-network
+    depends_on:
+      - app
 
 networks:
-  default:
-    name: trafficmetry-network
+  trafficmetry-network:
+    driver: bridge
+
+volumes:
+  trafficmetry-data:
+    driver: local

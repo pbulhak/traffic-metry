@@ -166,24 +166,22 @@ class VehicleTrackingManager:
         frame_rate: int = 30,
         update_interval_seconds: float = 1.0,
         start_journey_counter: int = 0,
-        minimum_consecutive_frames: int = 5,
     ):
-        """Initialize vehicle tracking manager with configurable ByteTrack parameters.
+        """Initialize vehicle tracking manager with full config integration.
 
         Args:
-            config: Model settings with ByteTrack optimization parameters
+            config: Model settings with ALL ByteTrack parameters from config
             frame_rate: Video frame rate for prediction algorithms
             update_interval_seconds: Minimum interval between VehicleUpdated events
             start_journey_counter: Starting counter for journey ID continuation
-            minimum_consecutive_frames: Minimum frames required to confirm track
         """
         try:
             self.tracker = sv.ByteTrack(
-                track_activation_threshold=config.track_thresh,  # Z konfiguracji
-                lost_track_buffer=config.track_buffer,          # Z konfiguracji
-                minimum_matching_threshold=config.match_thresh,   # Z konfiguracji
+                track_activation_threshold=config.track_activation_threshold,  # From config
+                lost_track_buffer=config.lost_track_buffer,                   # From config
+                minimum_matching_threshold=config.minimum_matching_threshold,  # From config
                 frame_rate=frame_rate,
-                minimum_consecutive_frames=minimum_consecutive_frames,  # Track confirmation
+                minimum_consecutive_frames=config.minimum_consecutive_frames,  # From config
             )
 
             # Store config for memory management
@@ -195,17 +193,17 @@ class VehicleTrackingManager:
             self.last_update_times: dict[int, float] = {}
 
             # Memory management parameters
-            self.max_active_vehicles = config.max_tracks
-            self.max_history_per_vehicle = 30  # Max 30 pozycji w historii
-            self.memory_cleanup_interval = 100  # Co 100 aktualizacji
+            self.max_active_vehicles = 100  # Default max active vehicles
+            self.max_history_per_vehicle = 30  # Max 30 positions in history
+            self.memory_cleanup_interval = 100  # Every 100 updates
             self.memory_cleanup_counter = 0
 
             # Journey ID management with continuation support
             self.journey_id_manager = JourneyIDManager(start_counter=start_journey_counter)
 
-            # Track confirmation system
+            # Track confirmation system - uses config parameter
             self.pending_tracks: dict[int, list[DetectionResult]] = {}  # track_id -> detections
-            self.track_confirmation_threshold = minimum_consecutive_frames
+            self.track_confirmation_threshold = config.minimum_consecutive_frames
 
             # Event broadcasting system
             self.event_listeners: list[Callable[[VehicleEvent, np.ndarray], None]] = []
@@ -216,11 +214,11 @@ class VehicleTrackingManager:
 
             logger.info(
                 f"VehicleTrackingManager initialized with configurable ByteTrack: "
-                f"activation_threshold={config.track_thresh}, "
-                f"lost_buffer={config.track_buffer}, "
-                f"matching_threshold={config.match_thresh}, "
+                f"activation_threshold={config.track_activation_threshold}, "
+                f"lost_buffer={config.lost_track_buffer}, "
+                f"matching_threshold={config.minimum_matching_threshold}, "
                 f"update_interval={update_interval_seconds}s, "
-                f"track_confirmation_threshold={minimum_consecutive_frames} frames"
+                f"track_confirmation_threshold={config.minimum_consecutive_frames} frames"
             )
 
         except Exception as e:
