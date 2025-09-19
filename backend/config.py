@@ -25,54 +25,37 @@ class CameraSettings(BaseModel):
     )
     width: int = Field(default=1920, ge=640, le=4096, description="Camera frame width in pixels")
     height: int = Field(default=1080, ge=480, le=2160, description="Camera frame height in pixels")
-    fps: int = Field(default=30, ge=1, le=60, description="Target frames per second")
+    fps: int = Field(default=25, ge=1, le=60, description="Camera frame rate for video processing")
 
 
 class ModelSettings(BaseModel):
     """AI model configuration settings."""
 
-    path: str = Field(default="yolov8n.pt", description="Path to YOLO model file")
-    confidence_threshold: float = Field(
-        default=0.5, ge=0.1, le=1.0, description="Minimum confidence for detections"
-    )
+    path: str = Field(default="data/models/yolov8n.pt", description="Path to YOLO model file")
     device: str = Field(default="cpu", description="Device for model inference (cpu/cuda)")
-    max_detections: int = Field(
-        default=100, ge=1, le=1000, description="Maximum detections per frame"
+
+    # Detection confidence thresholds
+    confidence_threshold: float = Field(
+        default=0.1, ge=0.01, le=1.0, description="Threshold for raw YOLO detections"
     )
-    candidate_storage_limit_gb: float = Field(
-        default=10.0,
-        gt=0,
-        le=1000.0,
-        description="Maximum storage limit for candidate images in GB",
-    )
-    candidate_cleanup_interval: int = Field(
-        default=1000, gt=0, le=10000, description="Cleanup check interval (every N saves)"
+    track_activation_threshold: float = Field(
+        default=0.3, ge=0.1, le=0.9, description="Threshold for ByteTrack to activate new track"
     )
 
-    # ByteTrack optimization parameters
-    track_thresh: float = Field(
-        default=0.5,
-        ge=0.1,
-        le=0.9,
-        description="Threshold for track activation (wysokość progu aktywacji śledzenia)"
+    # Tracker parameters
+    minimum_matching_threshold: float = Field(
+        default=0.8, ge=0.3, le=0.99, description="IoU threshold for matching detections to tracks"
     )
-    track_buffer: int = Field(
-        default=30,
-        ge=1,
-        le=120,
-        description="Buffer frames for lost tracks (bufor klatek dla zagubionych śladów)"
+    lost_track_buffer: int = Field(
+        default=30, ge=1, le=120, description="Frames to remember lost object before completion"
     )
-    match_thresh: float = Field(
-        default=0.8,
-        ge=0.3,
-        le=0.99,
-        description="IOU threshold for matching (próg IOU dla dopasowania)"
+    minimum_consecutive_frames: int = Field(
+        default=5, ge=1, le=20, description="Consecutive frames required to confirm track"
     )
-    max_tracks: int = Field(
-        default=100,
-        ge=10,
-        le=500,
-        description="Maximum concurrent tracks (maksymalna liczba jednoczesnych śladów)"
+
+    # Candidate saver settings
+    candidate_storage_limit_gb: float = Field(
+        default=10.0, gt=0, le=1000.0, description="Storage limit for candidate images in GB"
     )
 
 
@@ -90,6 +73,11 @@ class ServerSettings(BaseModel):
     cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
     websocket_max_connections: int = Field(
         default=10, ge=1, le=100, description="Max WebSocket connections"
+    )
+
+    # Vehicle tracking configuration
+    tracker_update_interval_seconds: float = Field(
+        default=1.0, gt=0.0, le=10.0, description="Minimum interval between VehicleUpdated events"
     )
 
 
