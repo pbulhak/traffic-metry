@@ -22,6 +22,9 @@ RUN uv sync --frozen --no-dev
 # Copy backend source code
 COPY backend/ ./backend/
 
+# Copy frontend source code
+COPY frontend/ ./frontend/
+
 # Create data directory
 RUN mkdir -p /app/data
 
