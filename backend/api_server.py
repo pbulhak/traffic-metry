@@ -63,6 +63,16 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
+@app.get("/health")
+async def health_check() -> dict[str, str]:
+    """Health check endpoint for container monitoring.
+
+    Returns:
+        Health status information
+    """
+    return {"status": "healthy", "service": "trafficmetry"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocket endpoint for real-time vehicle event streaming.
