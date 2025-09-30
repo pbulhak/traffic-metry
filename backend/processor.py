@@ -189,7 +189,7 @@ class TrafficMetryProcessor:
 
                         # 📊 CAMERA FPS TRACKING: Measure frame interval
                         camera_frame_start = time.time()
-                        frame = await self.camera.get_frame()
+                        frame = await self.camera.get_frame_with_reconnect()
 
                         # Track camera FPS (frame delivery rate)
                         if self.camera_fps_tracker["last_frame_time"] > 0:

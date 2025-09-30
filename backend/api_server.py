@@ -7,6 +7,7 @@ for real-time vehicle event streaming.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -105,8 +106,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         logger.debug(f"WebSocket client {client_id} cleanup completed")
 
 
-# Mount the entire frontend directory to the root URL (MUST be last!)
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+# Mount frontend ONLY if not in production (Docker)
+if os.getenv("ENVIRONMENT") != "production":
+    app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 
 if __name__ == "__main__":
