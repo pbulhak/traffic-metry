@@ -31,7 +31,10 @@ class CameraSettings(BaseModel):
 class ModelSettings(BaseModel):
     """AI model configuration settings."""
 
-    path: str = Field(default="data/models/yolov8n.pt", description="Path to YOLO model file")
+    path: str = Field(
+        default="data/models/yolov8n.pt",
+        description="Path to YOLO model file (.pt) or OpenVINO folder",
+    )
     device: str = Field(default="cpu", description="Device for model inference (cpu/cuda)")
 
     # Detection confidence thresholds
