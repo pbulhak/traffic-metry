@@ -12,12 +12,12 @@ dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "opencv-python>=4.8.0",
-    "ultralytics>=8.0.0",
+    "ultralytics>=8.0.0",  # Includes native ByteTrack tracking
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "websockets>=12.0",
     "python-multipart>=0.0.6",
-    "supervision>=0.26.1",
+    # supervision REMOVED - using Ultralytics native tracking instead
 ]
 
 [project.optional-dependencies]
