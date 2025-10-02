@@ -64,7 +64,7 @@ optimize_model() {
 
     # Run model export using docker-compose
     docker-compose run --rm model-exporter \
-        python scripts/export_model.py \
+        uv run python scripts/export_model.py \
         --source "$SOURCE_MODEL_PATH"
 
     # Create marker file to indicate successful conversion
