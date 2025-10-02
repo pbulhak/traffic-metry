@@ -315,27 +315,6 @@ class AsyncVehicleDetector:
             logger.error(f"Error in async vehicle detection: {e}")
             return []
 
-    async def reset_tracker(self) -> None:
-        """Reset tracker state asynchronously.
-
-        Useful after camera reconnection or when starting a new session.
-        """
-        if not self.detector:
-            logger.warning("Cannot reset tracker: detector not initialized")
-            return
-
-        try:
-
-            def _reset_sync(detector: VehicleDetector) -> None:
-                detector.reset_tracker()
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(self.executor, _reset_sync, self.detector)
-            logger.info("Async tracker state reset completed")
-
-        except Exception as e:
-            logger.error(f"Error resetting tracker: {e}")
-
     async def cleanup(self) -> None:
         """Cleanup detector resources."""
         if self.detector:
