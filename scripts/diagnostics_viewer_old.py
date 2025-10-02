@@ -75,7 +75,7 @@ CONTROLS_HELP = {
     "p": "Pause/Resume processing (GUI continues)",
     "t": "Toggle track ID display",
     "f": "Toggle confidence display",
-    "h": "Show help"
+    "h": "Show help",
 }
 
 HELP_HEADER = "TrafficMetry Interactive Diagnostics Laboratory"
@@ -83,7 +83,7 @@ HELP_DESCRIPTION = [
     "🚀 Multi-threaded architecture for optimal performance",
     "🎯 Processing & GUI threads running independently",
     "🔧 Real-time toggle controls for performance analysis",
-    "⚡ Expected: ~60 FPS GUI, ~25-30 FPS processing"
+    "⚡ Expected: ~60 FPS GUI, ~25-30 FPS processing",
 ]
 
 
@@ -398,8 +398,10 @@ class ProcessingThread:
                         tracking_start = time.time()
                         if control_state.tracking_enabled and raw_detections:
                             assert self.vehicle_tracking_manager is not None
-                            tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                                raw_detections, current_frame=frame
+                            tracked_detections, vehicle_events = (
+                                self.vehicle_tracking_manager.update(
+                                    raw_detections, current_frame=frame
+                                )
                             )
                             tracking_time = time.time() - tracking_start
                             self._track_bottleneck_metric("tracking_times", tracking_time)
@@ -947,7 +949,7 @@ class MultiThreadedDiagnosticsViewer:
     ╠══════════════════════════════════════════════════════════════╣
 """
         # Add most important controls for startup
-        priority_keys = ['q', '1', '2', 'd', 'c', 'p', 'h']
+        priority_keys = ["q", "1", "2", "d", "c", "p", "h"]
         for key in priority_keys:
             if key in CONTROLS_HELP:
                 help_text += f"    ║  '{key}' - {CONTROLS_HELP[key]:<54} ║\n"

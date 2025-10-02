@@ -28,19 +28,15 @@ __all__ = [
     "ThreadSafeDataManager",
     "ShutdownCoordinator",
     "DiagnosticsError",
-
     # Rendering
     "DiagnosticsRenderer",
-
     # Threading
     "ProcessingThread",
     "GUIThread",
-
     # Utilities
     "CONTROLS_HELP",
     "HELP_HEADER",
     "HELP_DESCRIPTION",
     "display_unified_help",
-    "display_startup_help"
+    "display_startup_help",
 ]
-

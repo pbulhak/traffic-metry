@@ -78,13 +78,13 @@ class MultiThreadedDiagnosticsViewer:
         self.processing_thread = ProcessingThread(
             config=self.config,
             data_manager=self.shared_data_manager,
-            shutdown_coordinator=self.shutdown_coordinator
+            shutdown_coordinator=self.shutdown_coordinator,
         )
 
         self.gui_thread = GUIThread(
             data_manager=self.shared_data_manager,
             shutdown_coordinator=self.shutdown_coordinator,
-            renderer=self.renderer  # Dependency injection
+            renderer=self.renderer,  # Dependency injection
         )
 
         logger.info("MultiThreadedDiagnosticsViewer initialized successfully")
@@ -218,4 +218,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Application crashed: {e}")
         sys.exit(1)
-

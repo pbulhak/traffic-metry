@@ -17,7 +17,7 @@ CONTROLS_HELP = {
     "p": "Pause/Resume processing (GUI continues)",
     "t": "Toggle track ID display",
     "f": "Toggle confidence display",
-    "h": "Show help"
+    "h": "Show help",
 }
 
 HELP_HEADER = "TrafficMetry Interactive Diagnostics Laboratory"
@@ -26,7 +26,7 @@ HELP_DESCRIPTION = [
     "🚀 Multi-threaded architecture for optimal performance",
     "🎯 Processing & GUI threads running independently",
     "🔧 Real-time toggle controls for performance analysis",
-    "⚡ Expected: ~60 FPS GUI, ~25-30 FPS processing"
+    "⚡ Expected: ~60 FPS GUI, ~25-30 FPS processing",
 ]
 
 
@@ -60,7 +60,7 @@ def display_startup_help() -> None:
     ╠══════════════════════════════════════════════════════════════╣
 """
     # Add most important controls for startup
-    priority_keys = ['q', '1', '2', 'd', 'c', 'p', 'h']
+    priority_keys = ["q", "1", "2", "d", "c", "p", "h"]
     for key in priority_keys:
         if key in CONTROLS_HELP:
             help_text += f"    ║  '{key}' - {CONTROLS_HELP[key]:<54} ║\n"
@@ -107,7 +107,6 @@ DEFAULT_WINDOW_CONFIG = {
 
 FPS_TRACKING_CONFIG = {
     "window_size": 30,  # Rolling average window
-    "target_fps": 60,   # Target GUI FPS
+    "target_fps": 60,  # Target GUI FPS
     "frame_timeout_ms": 16,  # ~60 FPS timing for cv2.waitKey
 }
-

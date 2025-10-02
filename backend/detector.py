@@ -238,7 +238,9 @@ class VehicleDetector:
                     device=self.model_settings.device,
                 )
             else:
-                raise DetectionError("Model is not callable and has no predict method", frame_shape=frame.shape)
+                raise DetectionError(
+                    "Model is not callable and has no predict method", frame_shape=frame.shape
+                )
 
             # Extract and filter detections
             detections = self._extract_vehicle_detections(

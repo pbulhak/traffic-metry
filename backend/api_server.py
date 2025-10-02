@@ -122,16 +122,16 @@ if __name__ == "__main__":
         reload=True,
         reload_dirs=["backend", "frontend"],  # Only watch backend and frontend folders
         reload_excludes=[
-            "*.log",              # Ignore log files
-            "data/*",             # Ignore data directory
-            "*.db",               # Ignore database files
-            "*.sqlite*",          # Ignore SQLite files
-            "*/__pycache__/*",    # Ignore Python cache
-            "*.pyc",              # Ignore compiled Python files
-            ".git/*",             # Ignore git directory
-            ".venv/*",            # Ignore virtual environment
-            "*.tmp",              # Ignore temporary files
-            "unlabeled_images/*", # Ignore image storage
+            "*.log",  # Ignore log files
+            "data/*",  # Ignore data directory
+            "*.db",  # Ignore database files
+            "*.sqlite*",  # Ignore SQLite files
+            "*/__pycache__/*",  # Ignore Python cache
+            "*.pyc",  # Ignore compiled Python files
+            ".git/*",  # Ignore git directory
+            ".venv/*",  # Ignore virtual environment
+            "*.tmp",  # Ignore temporary files
+            "unlabeled_images/*",  # Ignore image storage
         ],
-        log_level="info"
+        log_level="info",
     )

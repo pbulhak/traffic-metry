@@ -4,7 +4,6 @@ This module provides centralized configuration management using Pydantic Setting
 Supports loading from environment variables (.env).
 """
 
-
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
@@ -13,8 +12,6 @@ class ConfigurationError(Exception):
     """Raised when there's an issue with application configuration."""
 
     pass
-
-
 
 
 class CameraSettings(BaseModel):
@@ -84,8 +81,6 @@ class ServerSettings(BaseModel):
     )
 
 
-
-
 class LoggingSettings(BaseModel):
     """Logging configuration settings."""
 
@@ -104,7 +99,6 @@ class Settings(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
-
     # Global settings
     debug: bool = Field(default=False, description="Enable debug mode")
 
@@ -115,8 +109,6 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         env_nested_delimiter = "__"
         case_sensitive = False
-
-
 
 
 def load_config() -> Settings:

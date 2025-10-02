@@ -42,7 +42,7 @@ class DiagnosticsRenderer:
         stats: dict[str, Any],
         control_state: SharedControlState,
         gui_fps: float = 0.0,
-        processing_fps: float = 0.0
+        processing_fps: float = 0.0,
     ) -> NDArray:
         """Create complete visualization frame with all overlays.
 
@@ -65,9 +65,7 @@ class DiagnosticsRenderer:
         self._draw_raw_detections(display_frame, raw_detections)
 
         # Draw tracked detections (green) with conditional labels
-        self._draw_tracked_detections(
-            display_frame, tracked_detections, control_state
-        )
+        self._draw_tracked_detections(display_frame, tracked_detections, control_state)
 
         # Draw vehicle events
         self._draw_vehicle_events(display_frame, vehicle_events)
@@ -89,19 +87,10 @@ class DiagnosticsRenderer:
                 self.colors["raw_detection"],
                 1,
             )
-            cv2.circle(
-                frame,
-                detection.centroid,
-                2,
-                self.colors["raw_detection"],
-                -1
-            )
+            cv2.circle(frame, detection.centroid, 2, self.colors["raw_detection"], -1)
 
     def _draw_tracked_detections(
-        self,
-        frame: NDArray,
-        tracked_detections: list,
-        control_state: SharedControlState
+        self, frame: NDArray, tracked_detections: list, control_state: SharedControlState
     ) -> None:
         """Draw tracked detection bounding boxes with conditional labels."""
         for detection in tracked_detections:
@@ -115,13 +104,7 @@ class DiagnosticsRenderer:
             )
 
             # Draw centroid
-            cv2.circle(
-                frame,
-                detection.centroid,
-                3,
-                self.colors["tracked_vehicle"],
-                -1
-            )
+            cv2.circle(frame, detection.centroid, 3, self.colors["tracked_vehicle"], -1)
 
             # Conditional labels based on control state
             label_y_offset = detection.y1 - 30
@@ -187,7 +170,7 @@ class DiagnosticsRenderer:
         stats: dict[str, Any],
         control_state: SharedControlState,
         gui_fps: float,
-        processing_fps: float
+        processing_fps: float,
     ) -> NDArray:
         """Draw enhanced statistics panel overlay with FPS and control state."""
         height, width = frame.shape[:2]
@@ -195,11 +178,7 @@ class DiagnosticsRenderer:
         # Semi-transparent background
         overlay = frame.copy()
         cv2.rectangle(
-            overlay,
-            (0, 0),
-            (width, self.stats_panel_height),
-            self.colors["panel_bg"],
-            -1
+            overlay, (0, 0), (width, self.stats_panel_height), self.colors["panel_bg"], -1
         )
         frame = cv2.addWeighted(frame, 0.7, overlay, 0.3, 0)
 
@@ -236,4 +215,3 @@ class DiagnosticsRenderer:
             )
 
         return frame
-

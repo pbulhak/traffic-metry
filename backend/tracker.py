@@ -178,7 +178,7 @@ class VehicleTrackingManager:
         try:
             self.tracker = sv.ByteTrack(
                 track_activation_threshold=config.track_activation_threshold,  # From config
-                lost_track_buffer=config.lost_track_buffer,                   # From config
+                lost_track_buffer=config.lost_track_buffer,  # From config
                 minimum_matching_threshold=config.minimum_matching_threshold,  # From config
                 frame_rate=frame_rate,
                 minimum_consecutive_frames=config.minimum_consecutive_frames,  # From config
@@ -597,21 +597,20 @@ class VehicleTrackingManager:
         cleanup_stats = {
             "history_trimmed": 0,
             "vehicles_forced_exit": 0,
-            "pending_tracks_cleaned": 0
+            "pending_tracks_cleaned": 0,
         }
 
         # 1. Limit position history for active vehicles
         for vehicle in self.active_vehicles.values():
             if len(vehicle.position_history) > self.max_history_per_vehicle:
-                vehicle.position_history = vehicle.position_history[-self.max_history_per_vehicle:]
+                vehicle.position_history = vehicle.position_history[-self.max_history_per_vehicle :]
                 cleanup_stats["history_trimmed"] += 1
 
         # 2. Limit number of active vehicles (remove oldest ones)
         if len(self.active_vehicles) > self.max_active_vehicles:
             # Sort vehicles by last update timestamp
             sorted_vehicles = sorted(
-                self.active_vehicles.items(),
-                key=lambda x: x[1].last_update_timestamp
+                self.active_vehicles.items(), key=lambda x: x[1].last_update_timestamp
             )
 
             # Remove oldest vehicles exceeding the limit
@@ -669,6 +668,6 @@ class VehicleTrackingManager:
 
         # Regular cleanup every X updates or when too many active vehicles
         return (
-            self.memory_cleanup_counter >= self.memory_cleanup_interval or
-            len(self.active_vehicles) > self.max_active_vehicles * 1.2  # 20% over limit
+            self.memory_cleanup_counter >= self.memory_cleanup_interval
+            or len(self.active_vehicles) > self.max_active_vehicles * 1.2  # 20% over limit
         )

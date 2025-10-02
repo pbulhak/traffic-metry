@@ -81,6 +81,7 @@ class MessageCache:
         try:
             # Directly serialize event data to JSON (no wrapper)
             import json
+
             serialized_message = json.dumps(event_data)
 
             # Add to cache
@@ -241,7 +242,6 @@ class ConnectionManager:
         """
         await websocket.send_text(cached_json)
 
-
     def get_cache_stats(self) -> dict[str, Any]:
         """Get message cache performance statistics.
 
@@ -255,7 +255,6 @@ class ConnectionManager:
         self.message_cache.clear()
 
 
-
 class EventPublisher:
     """High-level event publisher for TrafficMetry WebSocket events."""
 
@@ -267,7 +266,9 @@ class EventPublisher:
             cache_size: Maximum number of cached serialized messages
         """
         self.connection_manager = ConnectionManager(max_connections, cache_size)
-        self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)  # Reduced for better memory management
+        self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
+            maxsize=100
+        )  # Reduced for better memory management
         self.is_running = False
         self.publisher_task: asyncio.Task | None = None
         self.dropped_events_count = 0  # Track dropped events for monitoring
@@ -328,7 +329,9 @@ class EventPublisher:
             except (asyncio.QueueEmpty, asyncio.QueueFull):
                 # Fallback: just drop the new event if we can't manage the queue
                 self.dropped_events_count += 1
-                logger.warning(f"Failed to manage event queue overflow. Total dropped: {self.dropped_events_count}")
+                logger.warning(
+                    f"Failed to manage event queue overflow. Total dropped: {self.dropped_events_count}"
+                )
                 return False
 
     async def connect_client(self, websocket: WebSocket) -> bool:
@@ -370,13 +373,12 @@ class EventPublisher:
             "queue_utilization": (self.event_queue.qsize() / self.event_queue.maxsize) * 100,
             "dropped_events_total": self.dropped_events_count,
             "active_connections": len(self.connection_manager.active_connections),
-            "max_connections": self.connection_manager.max_connections
+            "max_connections": self.connection_manager.max_connections,
         }
 
     def clear_cache(self) -> None:
         """Clear message cache."""
         self.connection_manager.clear_cache()
-
 
     async def _event_publisher_loop(self) -> None:
         """Background task for processing queued events."""

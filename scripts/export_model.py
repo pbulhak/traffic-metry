@@ -111,9 +111,7 @@ Examples:
         help="Disable INT8 quantization (default: enabled for better performance)",
     )
 
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose logging"
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
@@ -126,9 +124,7 @@ Examples:
     )
 
     try:
-        export_to_openvino(
-            source_model=args.source, output_dir=args.output, int8=not args.no_int8
-        )
+        export_to_openvino(source_model=args.source, output_dir=args.output, int8=not args.no_int8)
         return 0
 
     except FileNotFoundError as e:
