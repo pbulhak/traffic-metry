@@ -131,8 +131,10 @@ class VehicleDetector:
             # Load model
             self._model = YOLO(str(model_path))
 
-            # Configure model device
-            if hasattr(self._model, "to"):
+            # Configure model device (only for PyTorch models, not for exported formats)
+            # OpenVINO and other exported formats don't support .to() method
+            # Device should be specified in predict() calls instead
+            if hasattr(self._model, "to") and callable(self._model):
                 self._model.to(self.model_settings.device)
 
             load_time = time.time() - start_time
