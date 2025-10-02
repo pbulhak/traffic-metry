@@ -55,8 +55,8 @@ class TestVehicleDetectorInitialization:
             )
 
     def test_invalid_confidence_threshold_low(self) -> None:
-        """Test initialization fails with confidence threshold below 0.01."""
-        with pytest.raises(ValueError, match="Input should be greater than or equal to 0.01"):
+        """Test initialization fails with confidence threshold below 0.1."""
+        with pytest.raises(ValueError, match="Input should be greater than or equal to 0.1"):
             ModelSettings(path="model.pt", device="cpu", confidence_threshold=-0.1)
 
     def test_invalid_confidence_threshold_high(self) -> None:
@@ -244,16 +244,15 @@ class TestVehicleDetectorFrameDetection:
         sample_frame: np.ndarray,
         mock_yolo_results: list[Mock],
     ) -> None:
-        """Test successful vehicle detection with tracking."""
+        """Test successful vehicle detection."""
         detector = VehicleDetector(sample_model_settings)
 
         with (
             patch.object(detector, "_load_model"),
-            patch.object(detector, "_extract_tracked_vehicle_detections") as mock_extract,
+            patch.object(detector, "_extract_vehicle_detections") as mock_extract,
         ):
             detector._model_loaded = True
-            mock_model = Mock()
-            mock_model.track = Mock(return_value=mock_yolo_results)
+            mock_model = Mock(return_value=mock_yolo_results)
             detector._model = mock_model
 
             mock_detections = [Mock(spec=DetectionResult)]
@@ -263,12 +262,9 @@ class TestVehicleDetectorFrameDetection:
 
             assert result == mock_detections
             assert detector._frame_counter == 1
-            mock_model.track.assert_called_once_with(
+            mock_model.assert_called_once_with(
                 sample_frame,
                 conf=sample_model_settings.confidence_threshold,
-                iou=sample_model_settings.minimum_matching_threshold,
-                persist=True,
-                tracker="bytetrack.yaml",
                 verbose=False,
                 device=sample_model_settings.device,
             )
@@ -282,12 +278,10 @@ class TestVehicleDetectorFrameDetection:
 
         with (
             patch.object(detector, "_load_model"),
-            patch.object(detector, "_extract_tracked_vehicle_detections") as mock_extract,
+            patch.object(detector, "_extract_vehicle_detections") as mock_extract,
         ):
             detector._model_loaded = True
-            mock_model = Mock()
-            mock_model.track = Mock(return_value=[Mock()])
-            detector._model = mock_model
+            detector._model = Mock(return_value=[Mock()])
 
             detector.detect_vehicles(sample_frame, frame_timestamp=custom_timestamp)
 
@@ -344,13 +338,13 @@ class TestVehicleDetectorFrameDetection:
         """Test detection error when model is not callable."""
         detector = VehicleDetector(sample_model_settings)
 
-        # Create an object that doesn't have track method
+        # Create an object that doesn't have __call__
         class NonCallableModel:
             pass
 
         with patch.object(detector, "_load_model"):
             detector._model_loaded = True
-            detector._model = NonCallableModel()  # Object without track method
+            detector._model = NonCallableModel()  # Object without __call__
 
             with pytest.raises(DetectionError, match="Model is not callable"):
                 detector.detect_vehicles(sample_frame)
@@ -358,16 +352,16 @@ class TestVehicleDetectorFrameDetection:
     def test_detect_vehicles_inference_exception(
         self, sample_model_settings: ModelSettings, sample_frame: np.ndarray
     ) -> None:
-        """Test detection error when tracking raises exception."""
+        """Test detection error when inference raises exception."""
         detector = VehicleDetector(sample_model_settings)
 
         with patch.object(detector, "_load_model"):
             detector._model_loaded = True
             mock_model = Mock()
-            mock_model.track = Mock(side_effect=RuntimeError("Tracking failed"))
+            mock_model.side_effect = RuntimeError("Inference failed")
             detector._model = mock_model
 
-            with pytest.raises(DetectionError, match="Tracking detection failed"):
+            with pytest.raises(DetectionError, match="Detection failed"):
                 detector.detect_vehicles(sample_frame)
 
     def test_frame_counter_increments(
