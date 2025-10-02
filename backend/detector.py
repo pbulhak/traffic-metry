@@ -134,7 +134,8 @@ class VehicleDetector:
             # Configure model device (only for PyTorch models, not for exported formats)
             # OpenVINO and other exported formats don't support .to() method
             # Device should be specified in predict() calls instead
-            if hasattr(self._model, "to") and callable(self._model):
+            # Check if it's PyTorch by looking for .pt file extension
+            if hasattr(self._model, "to") and str(model_path).endswith('.pt'):
                 self._model.to(self.model_settings.device)
 
             load_time = time.time() - start_time
