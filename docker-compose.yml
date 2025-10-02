@@ -34,21 +34,6 @@ services:
     depends_on:
       - app
 
-  # Model Exporter - Used during deployment for OpenVINO conversion
-  model-exporter:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: trafficmetry-model-exporter
-    volumes:
-      - ./data:/app/data
-      - ./scripts:/app/scripts:ro
-    command: echo "Model export service ready"
-    profiles:
-      - tools
-    networks:
-      - trafficmetry-network
-
 networks:
   trafficmetry-network:
     driver: bridge
