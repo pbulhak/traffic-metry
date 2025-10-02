@@ -170,8 +170,12 @@ class VehicleDetector:
             # Create dummy frame for warmup
             dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
 
-            # Perform warmup inference
-            if callable(self._model):
+            # Perform warmup inference with format detection
+            if hasattr(self._model, "predict"):
+                # OpenVINO format - use predict() method
+                _ = self._model.predict(dummy_frame, verbose=False)
+            elif callable(self._model):
+                # PyTorch format - use callable
                 _ = self._model(dummy_frame, verbose=False)
 
             logger.debug("Model warmup completed successfully")
