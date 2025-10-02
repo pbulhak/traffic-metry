@@ -1,7 +1,8 @@
-"""Vehicle journey lifecycle management (tracking IDs provided by detector).
+"""Vehicle tracking module with event-driven lifecycle management.
 
-This module manages vehicle journey states based on track_id already assigned
-by VehicleDetector's native ByteTrack integration. No longer performs tracking itself.
+This module provides state-of-the-art vehicle tracking using ByteTrack algorithm
+from Roboflow Supervision, enhanced with complete vehicle journey lifecycle
+management, dynamic direction detection, and event-driven architecture.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import supervision as sv
 
 from backend.config import ModelSettings
 from backend.detection_models import DetectionResult
@@ -151,13 +153,11 @@ class VehicleTrackingState:
 
 
 class VehicleTrackingManager:
-    """Simplified vehicle journey lifecycle manager.
+    """Advanced vehicle tracking with dynamic direction detection and unique journey IDs.
 
-    Manages vehicle journeys from entry to exit based on track_id already
-    assigned by VehicleDetector. No longer performs tracking - just manages
-    journey state, direction analysis, and event generation.
-
-    BREAKING CHANGE: Expects DetectionResult objects with track_id already populated.
+    Event-driven architecture that manages vehicle journeys from entry to exit,
+    providing real-time updates, dynamic movement analysis, and complete journey analytics
+    without static lane dependencies.
     """
 
     def __init__(
@@ -167,16 +167,24 @@ class VehicleTrackingManager:
         update_interval_seconds: float = 1.0,
         start_journey_counter: int = 0,
     ):
-        """Initialize vehicle journey lifecycle manager.
+        """Initialize vehicle tracking manager with full config integration.
 
         Args:
-            config: Model settings (track confirmation params only)
-            frame_rate: Video frame rate (for direction analysis)
+            config: Model settings with ALL ByteTrack parameters from config
+            frame_rate: Video frame rate for prediction algorithms
             update_interval_seconds: Minimum interval between VehicleUpdated events
             start_journey_counter: Starting counter for journey ID continuation
         """
         try:
-            # NO MORE sv.ByteTrack - tracking done by detector!
+            self.tracker = sv.ByteTrack(
+                track_activation_threshold=config.track_activation_threshold,  # From config
+                lost_track_buffer=config.lost_track_buffer,                   # From config
+                minimum_matching_threshold=config.minimum_matching_threshold,  # From config
+                frame_rate=frame_rate,
+                minimum_consecutive_frames=config.minimum_consecutive_frames,  # From config
+            )
+
+            # Store config for memory management
             self.config = config
 
             # Vehicle lifecycle management
@@ -242,15 +250,12 @@ class VehicleTrackingManager:
                 logger.error(f"Event listener error: {e}")
 
     def update(
-        self, tracked_detections: list[DetectionResult], current_frame: np.ndarray
+        self, detections: list[DetectionResult], current_frame: np.ndarray
     ) -> tuple[list[DetectionResult], list[VehicleEvent]]:
-        """Update journey lifecycle based on ALREADY TRACKED detections.
-
-        BREAKING CHANGE: Expects DetectionResult.track_id to be already populated
-        by VehicleDetector's native tracking.
+        """Update tracking with track confirmation and event broadcasting.
 
         Args:
-            tracked_detections: Detections WITH track_id from detector
+            detections: List of raw detections from VehicleDetector
             current_frame: Current video frame for event broadcasting
 
         Returns:
@@ -259,24 +264,35 @@ class VehicleTrackingManager:
         current_timestamp = time.time()
         events: list[VehicleEvent] = []
 
-        if not tracked_detections:
+        if not detections:
             # Handle empty frame - check for vehicle exits
             events.extend(self._handle_empty_frame(current_timestamp, current_frame))
             return [], events
 
-        # Generate lifecycle events (no more conversion - track_id is already there!)
+        # Convert detections to supervision format
+        sv_detections = self._convert_to_supervision_detections(detections)
+
+        # Run ByteTrack tracking
+        tracked_sv_detections = self.tracker.update_with_detections(sv_detections)
+
+        # Convert back to DetectionResult with track_id
+        tracked_detections = self._convert_from_supervision_detections(
+            tracked_sv_detections, detections
+        )
+
+        # Generate lifecycle events with track confirmation and broadcasting
         events.extend(
             self._generate_lifecycle_events(tracked_detections, current_timestamp, current_frame)
         )
 
-        # Periodic memory cleanup
+        # Periodic memory cleanup for performance optimization
         if self._should_cleanup_memory():
             cleanup_stats = self._cleanup_memory()
-            self.memory_cleanup_counter = 0
+            self.memory_cleanup_counter = 0  # Reset counter
 
-            if any(cleanup_stats.values()):
+            if any(cleanup_stats.values()):  # Log only if something was cleaned
                 logger.debug(
-                    f"Memory cleanup: "
+                    f"🧹 Memory cleanup completed: "
                     f"history_trimmed={cleanup_stats['history_trimmed']}, "
                     f"vehicles_forced_exit={cleanup_stats['vehicles_forced_exit']}, "
                     f"pending_tracks_cleaned={cleanup_stats['pending_tracks_cleaned']}"
@@ -452,7 +468,7 @@ class VehicleTrackingManager:
     def _handle_empty_frame(
         self, current_timestamp: float, current_frame: np.ndarray
     ) -> list[VehicleEvent]:
-        """Handle empty frame by exiting all active vehicles.
+        """Handle empty frame by aging out all active vehicles.
 
         Args:
             current_timestamp: Current timestamp
@@ -461,12 +477,71 @@ class VehicleTrackingManager:
         Returns:
             List of VehicleExited events for all vehicles
         """
-        # No more sv.Detections.empty() - just exit all vehicles
+        # Update ByteTrack with empty detections
+        empty_detections = sv.Detections.empty()
+        self.tracker.update_with_detections(empty_detections)
+
+        # Exit all vehicles
         return self._handle_vehicle_exits(set(), current_timestamp, current_frame)
 
+    def _convert_to_supervision_detections(
+        self, detections: list[DetectionResult]
+    ) -> sv.Detections:
+        """Convert DetectionResult list to Supervision Detections format."""
+        if not detections:
+            return sv.Detections.empty()
+
+        xyxy = np.array([[det.x1, det.y1, det.x2, det.y2] for det in detections], dtype=np.float32)
+
+        confidence = np.array([det.confidence for det in detections], dtype=np.float32)
+
+        class_id = np.array([det.class_id for det in detections], dtype=int)
+
+        return sv.Detections(xyxy=xyxy, confidence=confidence, class_id=class_id)
+
+    def _convert_from_supervision_detections(
+        self, sv_detections: sv.Detections, original_detections: list[DetectionResult]
+    ) -> list[DetectionResult]:
+        """Convert Supervision Detections back to DetectionResult with track_id.
+
+        Simple 1:1 mapping approach - Trust ByteTrack 100% for correct ordering.
+        """
+        tracked_detections: list[DetectionResult] = []
+
+        if len(sv_detections) == 0 or sv_detections.tracker_id is None:
+            return tracked_detections
+
+        # Trust ByteTrack: Simple 1:1 mapping by index
+        for i, track_id in enumerate(sv_detections.tracker_id):
+            if i < len(original_detections):
+                original = original_detections[i]
+
+                # Create DetectionResult with ByteTrack's track_id
+                tracked_detection = DetectionResult(
+                    detection_id=f"track_{track_id}_{original.detection_id}",
+                    vehicle_type=original.vehicle_type,
+                    confidence=original.confidence,
+                    class_id=original.class_id,
+                    x1=original.x1,
+                    y1=original.y1,
+                    x2=original.x2,
+                    y2=original.y2,
+                    frame_timestamp=original.frame_timestamp,
+                    frame_id=original.frame_id,
+                    frame_shape=original.frame_shape,
+                    track_id=int(track_id),
+                )
+                tracked_detections.append(tracked_detection)
+            else:
+                logger.warning(
+                    f"ByteTrack returned more tracks ({len(sv_detections.tracker_id)}) than original detections ({len(original_detections)})"
+                )
+
+        return tracked_detections
+
     def reset(self) -> None:
-        """Reset lifecycle manager state."""
-        # No more self.tracker.reset() - tracking is in detector!
+        """Reset tracking manager state."""
+        self.tracker.reset()
         self.active_vehicles.clear()
         self.last_update_times.clear()
         self.journey_id_manager.reset()
