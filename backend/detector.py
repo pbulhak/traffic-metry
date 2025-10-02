@@ -184,70 +184,74 @@ class VehicleDetector:
         frame: NDArray,
         frame_timestamp: float | None = None,
     ) -> list[DetectionResult]:
-        """Detect vehicles in the provided frame.
+        """Detect and track vehicles using native YOLO ByteTrack integration.
+
+        This method combines detection and tracking in a single inference call
+        using YOLO's built-in ByteTrack tracker, eliminating the need for
+        external tracking libraries.
 
         Args:
             frame: Input image as numpy array (H, W, C) in BGR format
             frame_timestamp: Unix timestamp for the frame, uses current time if None
 
         Returns:
-            List of DetectionResult objects for detected vehicles
+            List of DetectionResult objects with track_id populated by ByteTrack
 
         Raises:
-            DetectionError: If detection fails
+            DetectionError: If detection or tracking fails
             ValueError: If frame is invalid
         """
         # Validate input frame
         self._validate_frame(frame)
 
-        # Use current time if timestamp not provided
         if frame_timestamp is None:
             frame_timestamp = time.time()
 
-        # Increment frame counter
         self._frame_counter += 1
 
         try:
-            # Load model if not already loaded (lazy loading)
+            # Load model if not already loaded
             if not self._model_loaded:
                 self._load_model()
 
             if self._model is None:
                 raise DetectionError("Model failed to load", frame_shape=frame.shape)
 
-            # Perform inference
             logger.debug(
-                f"Running inference on frame {self._frame_counter} with shape {frame.shape}"
+                f"Running tracking inference on frame {self._frame_counter} with shape {frame.shape}"
             )
 
+            # KEY DIFFERENCE: model.track() instead of model()
             if callable(self._model):
-                results = self._model(
+                results = self._model.track(  # type: ignore[attr-defined]
                     frame,
                     conf=self.model_settings.confidence_threshold,
+                    iou=self.model_settings.minimum_matching_threshold,
+                    persist=True,  # CRITICAL: maintain track state between frames
+                    tracker="bytetrack.yaml",  # Built-in ByteTrack config
                     verbose=False,
                     device=self.model_settings.device,
                 )
             else:
                 raise DetectionError("Model is not callable", frame_shape=frame.shape)
 
-            # Extract and filter detections
-            detections = self._extract_vehicle_detections(
+            # Extract detections WITH track_id
+            detections = self._extract_tracked_vehicle_detections(
                 results, frame.shape, frame_timestamp, self._frame_counter
             )
 
             logger.debug(
-                f"Found {len(detections)} vehicle detections in frame {self._frame_counter}"
+                f"Found {len(detections)} tracked vehicle detections in frame {self._frame_counter}"
             )
 
             return detections
 
         except ModelLoadError:
-            # Re-raise model loading errors
             raise
-
         except Exception as e:
             raise DetectionError(
-                f"Detection failed for frame {self._frame_counter}: {e}", frame_shape=frame.shape
+                f"Tracking detection failed for frame {self._frame_counter}: {e}",
+                frame_shape=frame.shape,
             ) from e
 
     def _validate_frame(self, frame: NDArray) -> None:
@@ -352,6 +356,90 @@ class VehicleDetector:
             return []
 
         return detections
+
+    def _extract_tracked_vehicle_detections(
+        self,
+        yolo_results: object,
+        frame_shape: tuple,
+        frame_timestamp: float,
+        frame_id: int,
+    ) -> list[DetectionResult]:
+        """Extract vehicle detections WITH track_id from YOLO tracking results.
+
+        Similar to _extract_vehicle_detections but extracts track_id from boxes.id
+
+        Args:
+            yolo_results: YOLO model.track() results
+            frame_shape: Shape of the input frame (H, W, C)
+            frame_timestamp: Unix timestamp for the frame
+            frame_id: Sequential frame identifier
+
+        Returns:
+            List of DetectionResult objects for vehicles with track_id populated
+        """
+        detections: list[DetectionResult] = []
+
+        try:
+            if hasattr(yolo_results, "__iter__"):
+                for result in yolo_results:
+                    if hasattr(result, "boxes") and result.boxes is not None:
+                        boxes = result.boxes
+
+                        if (
+                            hasattr(boxes, "xyxy")
+                            and hasattr(boxes, "conf")
+                            and hasattr(boxes, "cls")
+                            and hasattr(boxes, "id")  # NEW: track IDs
+                        ):
+                            coords = boxes.xyxy.cpu().numpy()
+                            confidences = boxes.conf.cpu().numpy()
+                            class_ids = boxes.cls.cpu().numpy().astype(int)
+                            track_ids = (
+                                boxes.id.cpu().numpy().astype(int)
+                                if boxes.id is not None
+                                else None
+                            )  # NEW: extract track IDs
+
+                            for idx, (coord, confidence, class_id) in enumerate(
+                                zip(coords, confidences, class_ids, strict=False)
+                            ):
+                                # Filter for vehicle classes only
+                                if class_id not in self.VEHICLE_CLASS_IDS:
+                                    continue
+
+                                x1, y1, x2, y2 = map(int, coord)
+                                vehicle_type = map_coco_class_to_vehicle_type(class_id)
+
+                                # Extract track_id if available
+                                track_id = int(track_ids[idx]) if track_ids is not None else None
+
+                                detection = DetectionResult.from_yolo_detection(
+                                    x1=x1,
+                                    y1=y1,
+                                    x2=x2,
+                                    y2=y2,
+                                    confidence=float(confidence),
+                                    class_id=class_id,
+                                    vehicle_type=vehicle_type,
+                                    frame_timestamp=frame_timestamp,
+                                    frame_id=frame_id,
+                                    frame_shape=frame_shape,
+                                    track_id=track_id,  # Populate track_id from ByteTrack
+                                )
+
+                                detections.append(detection)
+
+        except Exception as e:
+            logger.error(f"Failed to extract tracked detections from YOLO results: {e}")
+            return []
+
+        return detections
+
+    def reset_tracker(self) -> None:
+        """Reset tracker state (useful for stream reconnect or testing)."""
+        if self._model and hasattr(self._model, "predictor"):
+            self._model.predictor.trackers = []
+            logger.info("Tracker state reset")
 
     def get_model_info(self) -> dict[str, object]:
         """Get information about the loaded model.

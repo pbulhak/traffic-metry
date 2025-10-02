@@ -189,7 +189,16 @@ class TrafficMetryProcessor:
 
                         # 📊 CAMERA FPS TRACKING: Measure frame interval
                         camera_frame_start = time.time()
+
+                        # Track reconnect state before getting frame
+                        was_reconnecting = self.camera.current_reconnect_attempt > 0
+
                         frame = await self.camera.get_frame_with_reconnect()
+
+                        # Reset tracker after successful camera reconnection
+                        if was_reconnecting and self.camera.current_reconnect_attempt == 0:
+                            await self.detector.reset_tracker()
+                            logger.info("Tracker reset after camera reconnection")
 
                         # Track camera FPS (frame delivery rate)
                         if self.camera_fps_tracker["last_frame_time"] > 0:
