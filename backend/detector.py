@@ -220,7 +220,17 @@ class VehicleDetector:
                 f"Running inference on frame {self._frame_counter} with shape {frame.shape}"
             )
 
-            if callable(self._model):
+            # OpenVINO models use .predict() method, PyTorch models are callable
+            if hasattr(self._model, "predict"):
+                # OpenVINO format - use predict() method
+                results = self._model.predict(
+                    frame,
+                    conf=self.model_settings.confidence_threshold,
+                    verbose=False,
+                    device=self.model_settings.device,
+                )
+            elif callable(self._model):
+                # PyTorch format - use callable
                 results = self._model(
                     frame,
                     conf=self.model_settings.confidence_threshold,
@@ -228,7 +238,7 @@ class VehicleDetector:
                     device=self.model_settings.device,
                 )
             else:
-                raise DetectionError("Model is not callable", frame_shape=frame.shape)
+                raise DetectionError("Model is not callable and has no predict method", frame_shape=frame.shape)
 
             # Extract and filter detections
             detections = self._extract_vehicle_detections(
