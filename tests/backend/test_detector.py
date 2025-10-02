@@ -55,8 +55,8 @@ class TestVehicleDetectorInitialization:
             )
 
     def test_invalid_confidence_threshold_low(self) -> None:
-        """Test initialization fails with confidence threshold below 0.1."""
-        with pytest.raises(ValueError, match="Input should be greater than or equal to 0.1"):
+        """Test initialization fails with confidence threshold below 0.01."""
+        with pytest.raises(ValueError, match="Input should be greater than or equal to 0.01"):
             ModelSettings(path="model.pt", device="cpu", confidence_threshold=-0.1)
 
     def test_invalid_confidence_threshold_high(self) -> None:
@@ -253,6 +253,8 @@ class TestVehicleDetectorFrameDetection:
         ):
             detector._model_loaded = True
             mock_model = Mock(return_value=mock_yolo_results)
+            # Ensure mock doesn't have .predict attribute (PyTorch mode)
+            del mock_model.predict
             detector._model = mock_model
 
             mock_detections = [Mock(spec=DetectionResult)]
@@ -358,7 +360,8 @@ class TestVehicleDetectorFrameDetection:
         with patch.object(detector, "_load_model"):
             detector._model_loaded = True
             mock_model = Mock()
-            mock_model.side_effect = RuntimeError("Inference failed")
+            # Set side_effect on .predict method (OpenVINO path will be taken)
+            mock_model.predict.side_effect = RuntimeError("Inference failed")
             detector._model = mock_model
 
             with pytest.raises(DetectionError, match="Detection failed"):
