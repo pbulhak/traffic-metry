@@ -96,6 +96,23 @@ class TrafficMetryProcessor:
                 storage_limit_gb=config.model.candidate_storage_limit_gb,
             )
 
+            # Validate ROI configuration
+            if config.roi.enabled:
+                if not config.roi.validate_coordinates(config.camera.width, config.camera.height):
+                    raise ValueError(
+                        f"Invalid ROI coordinates: ({config.roi.x1},{config.roi.y1}) "
+                        f"to ({config.roi.x2},{config.roi.y2}) "
+                        f"for frame size {config.camera.width}x{config.camera.height}"
+                    )
+                roi_dims = config.roi.get_roi_dimensions()
+                logger.info(
+                    f"ROI enabled: ({config.roi.x1},{config.roi.y1}) "
+                    f"to ({config.roi.x2},{config.roi.y2}) "
+                    f"[{roi_dims[0]}x{roi_dims[1]} px]"
+                )
+            else:
+                logger.info("ROI disabled - processing full frame")
+
             logger.info("Basic components initialized successfully")
 
         except Exception as e:
@@ -132,6 +149,64 @@ class TrafficMetryProcessor:
         except Exception as e:
             logger.error(f"Failed to initialize vehicle tracking manager: {e}")
             raise
+
+    def _extract_roi(self, frame: NDArray) -> NDArray:
+        """Extract Region of Interest from frame if ROI is enabled.
+
+        Args:
+            frame: Full frame from camera
+
+        Returns:
+            ROI cropped frame if ROI enabled, otherwise full frame
+        """
+        if not self.config.roi.enabled:
+            return frame
+
+        # Extract ROI using numpy slicing (very efficient)
+        roi_frame = frame[
+            self.config.roi.y1 : self.config.roi.y2, self.config.roi.x1 : self.config.roi.x2
+        ]
+
+        return roi_frame
+
+    def _offset_detections_from_roi(
+        self, detections: list[DetectionResult]
+    ) -> list[DetectionResult]:
+        """Offset detection coordinates from ROI back to full frame coordinates.
+
+        Args:
+            detections: List of detections in ROI coordinate system
+
+        Returns:
+            List of detections in full frame coordinate system
+        """
+        if not self.config.roi.enabled:
+            return detections
+
+        offset_x = self.config.roi.x1
+        offset_y = self.config.roi.y1
+
+        offset_detections = []
+
+        for det in detections:
+            # Create new DetectionResult with offset coordinates
+            offset_det = DetectionResult(
+                detection_id=det.detection_id,
+                vehicle_type=det.vehicle_type,
+                confidence=det.confidence,
+                class_id=det.class_id,
+                x1=det.x1 + offset_x,
+                y1=det.y1 + offset_y,
+                x2=det.x2 + offset_x,
+                y2=det.y2 + offset_y,
+                frame_timestamp=det.frame_timestamp,
+                frame_id=det.frame_id,
+                frame_shape=det.frame_shape,  # Keep original frame shape
+                track_id=det.track_id,
+            )
+            offset_detections.append(offset_det)
+
+        return offset_detections
 
     def _handle_tracking_event(self, event: VehicleEvent, frame: NDArray) -> None:
         """Handle vehicle tracking events by routing them to the candidate saver.
@@ -234,8 +309,14 @@ class TrafficMetryProcessor:
 
                         self.frame_count += 1
 
-                        # Detect vehicles asynchronously (raw detections from YOLO)
-                        raw_detections = await self.detector.detect_vehicles(frame)
+                        # 🎨 ROI EXTRACTION: Extract region of interest if enabled
+                        roi_frame = self._extract_roi(frame)
+
+                        # Detect vehicles asynchronously in ROI (raw detections from YOLO)
+                        raw_detections_roi = await self.detector.detect_vehicles(roi_frame)
+
+                        # 📐 ROI OFFSET: Transform coordinates back to full frame
+                        raw_detections = self._offset_detections_from_roi(raw_detections_roi)
                         self.detection_count += len(raw_detections)
 
                         # 🎯 EVENT-DRIVEN TRACKING: Update tracking with dynamic direction detection
