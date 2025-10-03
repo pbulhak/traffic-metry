@@ -153,4 +153,3 @@ class DiagnosticsError(Exception):
     """Base exception for diagnostics viewer errors."""
 
     pass
-

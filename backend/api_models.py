@@ -70,5 +70,3 @@ class VehicleEvent(BaseModel):
 
         allow_population_by_field_name = True
         json_encoders = {datetime: lambda v: v.isoformat()}
-
-

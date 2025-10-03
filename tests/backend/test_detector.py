@@ -244,16 +244,17 @@ class TestVehicleDetectorFrameDetection:
         sample_frame: np.ndarray,
         mock_yolo_results: list[Mock],
     ) -> None:
-        """Test successful vehicle detection with tracking."""
+        """Test successful vehicle detection."""
         detector = VehicleDetector(sample_model_settings)
 
         with (
             patch.object(detector, "_load_model"),
-            patch.object(detector, "_extract_tracked_vehicle_detections") as mock_extract,
+            patch.object(detector, "_extract_vehicle_detections") as mock_extract,
         ):
             detector._model_loaded = True
-            mock_model = Mock()
-            mock_model.track = Mock(return_value=mock_yolo_results)
+            mock_model = Mock(return_value=mock_yolo_results)
+            # Ensure mock doesn't have .predict attribute (PyTorch mode)
+            del mock_model.predict
             detector._model = mock_model
 
             mock_detections = [Mock(spec=DetectionResult)]
@@ -263,12 +264,9 @@ class TestVehicleDetectorFrameDetection:
 
             assert result == mock_detections
             assert detector._frame_counter == 1
-            mock_model.track.assert_called_once_with(
+            mock_model.assert_called_once_with(
                 sample_frame,
                 conf=sample_model_settings.confidence_threshold,
-                iou=sample_model_settings.minimum_matching_threshold,
-                persist=True,
-                tracker="bytetrack.yaml",
                 verbose=False,
                 device=sample_model_settings.device,
             )
@@ -282,12 +280,10 @@ class TestVehicleDetectorFrameDetection:
 
         with (
             patch.object(detector, "_load_model"),
-            patch.object(detector, "_extract_tracked_vehicle_detections") as mock_extract,
+            patch.object(detector, "_extract_vehicle_detections") as mock_extract,
         ):
             detector._model_loaded = True
-            mock_model = Mock()
-            mock_model.track = Mock(return_value=[Mock()])
-            detector._model = mock_model
+            detector._model = Mock(return_value=[Mock()])
 
             detector.detect_vehicles(sample_frame, frame_timestamp=custom_timestamp)
 
@@ -344,13 +340,13 @@ class TestVehicleDetectorFrameDetection:
         """Test detection error when model is not callable."""
         detector = VehicleDetector(sample_model_settings)
 
-        # Create an object that doesn't have track method
+        # Create an object that doesn't have __call__
         class NonCallableModel:
             pass
 
         with patch.object(detector, "_load_model"):
             detector._model_loaded = True
-            detector._model = NonCallableModel()  # Object without track method
+            detector._model = NonCallableModel()  # Object without __call__
 
             with pytest.raises(DetectionError, match="Model is not callable"):
                 detector.detect_vehicles(sample_frame)
@@ -358,16 +354,17 @@ class TestVehicleDetectorFrameDetection:
     def test_detect_vehicles_inference_exception(
         self, sample_model_settings: ModelSettings, sample_frame: np.ndarray
     ) -> None:
-        """Test detection error when tracking raises exception."""
+        """Test detection error when inference raises exception."""
         detector = VehicleDetector(sample_model_settings)
 
         with patch.object(detector, "_load_model"):
             detector._model_loaded = True
             mock_model = Mock()
-            mock_model.track = Mock(side_effect=RuntimeError("Tracking failed"))
+            # Set side_effect on .predict method (OpenVINO path will be taken)
+            mock_model.predict.side_effect = RuntimeError("Inference failed")
             detector._model = mock_model
 
-            with pytest.raises(DetectionError, match="Tracking detection failed"):
+            with pytest.raises(DetectionError, match="Detection failed"):
                 detector.detect_vehicles(sample_frame)
 
     def test_frame_counter_increments(

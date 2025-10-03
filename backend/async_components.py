@@ -52,7 +52,9 @@ class AsyncCameraStream:
         self.last_successful_frame_time = 0.0
         self.connection_timeout_seconds = 30.0
 
-        logger.info(f"AsyncCameraStream initialized with {max_workers} worker threads and reconnect capability")
+        logger.info(
+            f"AsyncCameraStream initialized with {max_workers} worker threads and reconnect capability"
+        )
 
     async def __aenter__(self) -> AsyncCameraStream:
         """Async context manager entry."""
@@ -127,6 +129,7 @@ class AsyncCameraStream:
 
             if frame is not None:
                 import time
+
                 self.last_successful_frame_time = time.time()
                 self.current_reconnect_attempt = 0  # Reset on successful frame
 
@@ -162,7 +165,7 @@ class AsyncCameraStream:
             # Calculate backoff delay with exponential growth
             delay = min(
                 self.reconnect_delay_base * (2 ** (self.current_reconnect_attempt - 1)),
-                self.reconnect_delay_max
+                self.reconnect_delay_max,
             )
 
             logger.warning(
@@ -181,7 +184,9 @@ class AsyncCameraStream:
                 # Test the connection with frame capture
                 frame = await self.get_frame()
                 if frame is not None:
-                    logger.info(f"Camera reconnected successfully after {self.current_reconnect_attempt} attempts")
+                    logger.info(
+                        f"Camera reconnected successfully after {self.current_reconnect_attempt} attempts"
+                    )
                     return frame
 
             except Exception as e:
@@ -220,9 +225,11 @@ class AsyncCameraStream:
             return {"status": "disconnected"}
 
         import time
+
         time_since_last_frame = (
             time.time() - self.last_successful_frame_time
-            if self.last_successful_frame_time > 0 else 0
+            if self.last_successful_frame_time > 0
+            else 0
         )
 
         return {
@@ -314,27 +321,6 @@ class AsyncVehicleDetector:
         except Exception as e:
             logger.error(f"Error in async vehicle detection: {e}")
             return []
-
-    async def reset_tracker(self) -> None:
-        """Reset tracker state asynchronously.
-
-        Useful after camera reconnection or when starting a new session.
-        """
-        if not self.detector:
-            logger.warning("Cannot reset tracker: detector not initialized")
-            return
-
-        try:
-
-            def _reset_sync(detector: VehicleDetector) -> None:
-                detector.reset_tracker()
-
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(self.executor, _reset_sync, self.detector)
-            logger.info("Async tracker state reset completed")
-
-        except Exception as e:
-            logger.error(f"Error resetting tracker: {e}")
 
     async def cleanup(self) -> None:
         """Cleanup detector resources."""

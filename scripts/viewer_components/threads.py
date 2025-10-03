@@ -180,8 +180,10 @@ class ProcessingThread:
                         if control_state.tracking_enabled:
                             assert self.vehicle_tracking_manager is not None
                             # Always call update (even with empty detections) to allow finalization of lost tracks
-                            tracked_detections, vehicle_events = self.vehicle_tracking_manager.update(
-                                raw_detections, current_frame=frame
+                            tracked_detections, vehicle_events = (
+                                self.vehicle_tracking_manager.update(
+                                    raw_detections, current_frame=frame
+                                )
                             )
                             tracking_time = time.time() - tracking_start
                             self._track_bottleneck_metric("tracking_times", tracking_time)
@@ -210,7 +212,9 @@ class ProcessingThread:
 
                         # Maintain sliding window
                         processing_times_list = self.processing_fps_tracker["processing_times"]
-                        if len(processing_times_list) > int(self.processing_fps_tracker["window_size"]):
+                        if len(processing_times_list) > int(
+                            self.processing_fps_tracker["window_size"]
+                        ):
                             processing_times_list.pop(0)
 
                         # Calculate current processing FPS
@@ -221,7 +225,9 @@ class ProcessingThread:
                             "frame_count": self.frame_count,
                             "detection_count": self.detection_count,
                             "event_count": self.event_count,
-                            "tracking_stats": self.vehicle_tracking_manager.get_tracking_stats() if self.vehicle_tracking_manager else {},
+                            "tracking_stats": self.vehicle_tracking_manager.get_tracking_stats()
+                            if self.vehicle_tracking_manager
+                            else {},
                         }
 
                         self.data_manager.update_frame_data(
@@ -332,7 +338,7 @@ class GUIThread:
         self,
         data_manager: ThreadSafeDataManager,
         shutdown_coordinator: ShutdownCoordinator,
-        renderer: DiagnosticsRenderer
+        renderer: DiagnosticsRenderer,
     ):
         """Initialize GUI thread with renderer dependency injection."""
         self.data_manager = data_manager
@@ -358,7 +364,7 @@ class GUIThread:
         cv2.resizeWindow(
             self.window_name,
             int(DEFAULT_WINDOW_CONFIG["width"]),  # type: ignore[call-overload]
-            int(DEFAULT_WINDOW_CONFIG["height"])  # type: ignore[call-overload]
+            int(DEFAULT_WINDOW_CONFIG["height"]),  # type: ignore[call-overload]
         )
         cv2.setWindowProperty(self.window_name, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_KEEPRATIO)
         logger.info("GUI thread: OpenCV window created")
@@ -407,7 +413,7 @@ class GUIThread:
                         stats=display_data.stats,
                         control_state=control_state,
                         gui_fps=gui_fps,
-                        processing_fps=display_data.processing_fps
+                        processing_fps=display_data.processing_fps,
                     )
 
                     # 🖥️ DISPLAY
@@ -477,4 +483,3 @@ class GUIThread:
             logger.info(f"⏯️ Processing: {'PAUSED' if new_state else 'RESUMED'}")
         elif key == ord("h"):
             display_unified_help()
-
