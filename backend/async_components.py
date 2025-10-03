@@ -50,7 +50,7 @@ class AsyncCameraStream:
         self.reconnect_delay_max = 60.0
         self.current_reconnect_attempt = 0
         self.last_successful_frame_time = 0.0
-        self.connection_timeout_seconds = 30.0
+        self.connection_timeout_seconds = 2.0
 
         logger.info(
             f"AsyncCameraStream initialized with {max_workers} worker threads and reconnect capability"
@@ -63,7 +63,7 @@ class AsyncCameraStream:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
-        await self.disconnect()
+        await self.cleanup()
 
     async def connect(self) -> None:
         """Connect to camera stream in a separate thread."""
@@ -88,7 +88,11 @@ class AsyncCameraStream:
             raise
 
     async def disconnect(self) -> None:
-        """Disconnect camera stream in a separate thread."""
+        """Disconnect camera stream in a separate thread.
+
+        Note: Does NOT shutdown the executor - use cleanup() for full teardown.
+        This allows reconnection using the same executor.
+        """
         if not self.is_connected or not self.camera_stream:
             return
 
@@ -106,8 +110,6 @@ class AsyncCameraStream:
 
         except Exception as e:
             logger.error(f"Error disconnecting async camera stream: {e}")
-        finally:
-            self.executor.shutdown(wait=False)
 
     async def get_frame(self) -> NDArray | None:
         """Capture frame from camera in a separate thread.
@@ -196,6 +198,41 @@ class AsyncCameraStream:
         logger.error(f"Failed to reconnect camera after {self.max_reconnect_attempts} attempts")
         return None
 
+    async def force_reconnect(self) -> bool:
+        """Force immediate camera reconnection to clear buffer.
+
+        This method performs a hard restart of the camera connection
+        by releasing the old VideoCapture and creating a new one.
+        Useful after model loading to clear potentially stale buffer frames.
+
+        Returns:
+            True if reconnection successful, False otherwise
+        """
+        logger.info("Forcing camera reconnection to clear buffer...")
+
+        try:
+            # Disconnect current connection
+            await self.disconnect()
+
+            # Reset reconnect counter
+            self.current_reconnect_attempt = 0
+
+            # Establish new connection
+            await self.connect()
+
+            # Verify connection with test frame
+            test_frame = await self.get_frame()
+            if test_frame is not None:
+                logger.info("Force reconnect successful - buffer cleared")
+                return True
+            else:
+                logger.warning("Force reconnect completed but test frame failed")
+                return False
+
+        except Exception as e:
+            logger.error(f"Force reconnect failed: {e}")
+            return False
+
     def _should_attempt_reconnect(self) -> bool:
         """Check if reconnection should be attempted based on connection timeout.
 
@@ -218,6 +255,20 @@ class AsyncCameraStream:
                 return True
 
         return False
+
+    async def cleanup(self) -> None:
+        """Clean up resources and shutdown executor.
+
+        This method should be called when completely done with the camera stream.
+        It disconnects the stream and shuts down the thread pool executor.
+        """
+        try:
+            await self.disconnect()
+        except Exception as e:
+            logger.error(f"Error during camera cleanup: {e}")
+        finally:
+            self.executor.shutdown(wait=False)
+            logger.info("AsyncCameraStream executor shutdown")
 
     def get_camera_info(self) -> dict[str, Any]:
         """Get camera information (non-blocking)."""

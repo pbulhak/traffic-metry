@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
 ENV_EXAMPLE="${SCRIPT_DIR}/.env.example"
 SOURCE_MODEL_PATH="data/models/yolov8n.pt"
-OPENVINO_MODEL_PATH="data/models/yolo_openvino"
+OPENVINO_MODEL_PATH="data/models/yolov8n_int8_openvino_model"
 OPENVINO_MARKER="${OPENVINO_MODEL_PATH}/.conversion_complete"
 
 # === HELPER FUNCTIONS ===
