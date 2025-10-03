@@ -59,6 +59,47 @@ class ModelSettings(BaseModel):
     )
 
 
+class ROISettings(BaseModel):
+    """Region of Interest configuration for detection optimization."""
+
+    enabled: bool = Field(
+        default=False, description="Enable ROI-based detection (processes only specific region)"
+    )
+    x1: int = Field(default=0, ge=0, description="ROI top-left X coordinate (pixels)")
+    y1: int = Field(default=0, ge=0, description="ROI top-left Y coordinate (pixels)")
+    x2: int = Field(default=1920, ge=0, description="ROI bottom-right X coordinate (pixels)")
+    y2: int = Field(default=1080, ge=0, description="ROI bottom-right Y coordinate (pixels)")
+
+    def validate_coordinates(self, frame_width: int, frame_height: int) -> bool:
+        """Validate ROI coordinates against frame dimensions.
+
+        Args:
+            frame_width: Frame width in pixels
+            frame_height: Frame height in pixels
+
+        Returns:
+            True if valid, False otherwise
+        """
+        if not self.enabled:
+            return True
+
+        if self.x1 >= self.x2 or self.y1 >= self.y2:
+            return False
+
+        if self.x2 > frame_width or self.y2 > frame_height:
+            return False
+
+        return True
+
+    def get_roi_dimensions(self) -> tuple[int, int]:
+        """Get ROI dimensions (width, height).
+
+        Returns:
+            Tuple of (width, height) in pixels
+        """
+        return (self.x2 - self.x1, self.y2 - self.y1)
+
+
 class DatabaseSettings(BaseModel):
     """Database configuration settings."""
 
@@ -95,6 +136,7 @@ class Settings(BaseSettings):
     # Sub-settings
     camera: CameraSettings = Field(default_factory=CameraSettings)
     model: ModelSettings = Field(default_factory=ModelSettings)
+    roi: ROISettings = Field(default_factory=ROISettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
