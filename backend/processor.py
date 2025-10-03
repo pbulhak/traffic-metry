@@ -29,6 +29,7 @@ from backend.candidate_saver import EventDrivenCandidateSaver
 from backend.config import Settings, get_config
 from backend.database import DatabaseError, EventDatabase
 from backend.detector import DetectionError, ModelLoadError
+from backend.detection_models import DetectionResult
 from backend.tracker import VehicleTrackingManager
 from backend.vehicle_events import VehicleEntered, VehicleEvent, VehicleExited, VehicleUpdated
 
@@ -188,6 +189,13 @@ class TrafficMetryProcessor:
 
         offset_detections = []
 
+        # Original full frame dimensions
+        full_frame_shape = (
+            self.config.camera.height,
+            self.config.camera.width,
+            3  # RGB channels
+        )
+
         for det in detections:
             # Create new DetectionResult with offset coordinates
             offset_det = DetectionResult(
@@ -201,7 +209,7 @@ class TrafficMetryProcessor:
                 y2=det.y2 + offset_y,
                 frame_timestamp=det.frame_timestamp,
                 frame_id=det.frame_id,
-                frame_shape=det.frame_shape,  # Keep original frame shape
+                frame_shape=full_frame_shape,  # Use original full frame shape
                 track_id=det.track_id,
             )
             offset_detections.append(offset_det)
