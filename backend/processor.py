@@ -61,6 +61,9 @@ class TrafficMetryProcessor:
         self.detection_count = 0
         self.event_count = 0
 
+        # Force reconnect flag (set after model loading to clear camera buffer)
+        self._model_just_loaded = False
+
         # Performance tracking for headless monitoring
         self.camera_fps_tracker: dict[str, Any] = {
             "last_frame_time": 0.0,
@@ -120,6 +123,11 @@ class TrafficMetryProcessor:
                 f"Vehicle tracking manager initialized with journey ID continuation from {last_journey_id}"
             )
             logger.info("Event-driven candidate saver registered as listener")
+
+            # Set flag to trigger camera reconnect
+            # (model was loaded in detector.initialize() before this method)
+            self._model_just_loaded = True
+            logger.info("Model loaded - will force camera reconnect on next frame")
 
         except Exception as e:
             logger.error(f"Failed to initialize vehicle tracking manager: {e}")
@@ -190,6 +198,18 @@ class TrafficMetryProcessor:
                         # 📊 CAMERA FPS TRACKING: Measure frame interval
                         camera_frame_start = time.time()
                         frame = await self.camera.get_frame_with_reconnect()
+
+                        # ⚡ FORCE RECONNECT: Clear camera buffer after model loading
+                        if self._model_just_loaded:
+                            logger.info("🔄 Model just loaded, forcing camera reconnect to clear buffer...")
+                            success = await self.camera.force_reconnect()
+                            if success:
+                                logger.info("✅ Camera reconnected successfully after model load")
+                                # Get fresh frame after reconnect
+                                frame = await self.camera.get_frame_with_reconnect()
+                            else:
+                                logger.error("❌ Failed to force camera reconnect")
+                            self._model_just_loaded = False  # Execute only once
 
                         # Track camera FPS (frame delivery rate)
                         if self.camera_fps_tracker["last_frame_time"] > 0:
