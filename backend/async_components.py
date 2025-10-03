@@ -196,6 +196,41 @@ class AsyncCameraStream:
         logger.error(f"Failed to reconnect camera after {self.max_reconnect_attempts} attempts")
         return None
 
+    async def force_reconnect(self) -> bool:
+        """Force immediate camera reconnection to clear buffer.
+
+        This method performs a hard restart of the camera connection
+        by releasing the old VideoCapture and creating a new one.
+        Useful after model loading to clear potentially stale buffer frames.
+
+        Returns:
+            True if reconnection successful, False otherwise
+        """
+        logger.info("Forcing camera reconnection to clear buffer...")
+
+        try:
+            # Disconnect current connection
+            await self.disconnect()
+
+            # Reset reconnect counter
+            self.current_reconnect_attempt = 0
+
+            # Establish new connection
+            await self.connect()
+
+            # Verify connection with test frame
+            test_frame = await self.get_frame()
+            if test_frame is not None:
+                logger.info("Force reconnect successful - buffer cleared")
+                return True
+            else:
+                logger.warning("Force reconnect completed but test frame failed")
+                return False
+
+        except Exception as e:
+            logger.error(f"Force reconnect failed: {e}")
+            return False
+
     def _should_attempt_reconnect(self) -> bool:
         """Check if reconnection should be attempted based on connection timeout.
 
