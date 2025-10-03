@@ -97,7 +97,7 @@ class VehicleEntered(VehicleEvent):
     detection: DetectionResult
 
     def to_websocket_format(self) -> dict[str, Any]:
-        """Convert to WebSocket format for real-time notifications."""
+        """Convert to WebSocket format with clean, standardized movement structure."""
         return {
             "type": "vehicle_entered",
             "eventId": f"enter_{self.journey_id}_{int(self.timestamp)}",
@@ -107,7 +107,6 @@ class VehicleEntered(VehicleEvent):
             "vehicleType": self.vehicle_type.value,
             "movement": {
                 "direction": None,  # Direction will be determined dynamically
-                "directionConfidence": 0.0,
                 "entryPosition": {"x": self.detection.centroid[0], "y": self.detection.centroid[1]},
             },
             "position": {
