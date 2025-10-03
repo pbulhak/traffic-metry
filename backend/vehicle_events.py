@@ -186,7 +186,10 @@ class VehicleExited(VehicleEvent):
     exit_reason: str  # "lost_track", "boundary_exit", "low_confidence"
 
     def to_websocket_format(self) -> dict[str, Any]:
-        """Convert to WebSocket format for comprehensive journey completion notifications."""
+        """Convert to WebSocket format with consistent movement structure.
+
+        Returns event with standardized movement.direction field for frontend consistency.
+        """
         return {
             "type": "vehicle_exited",
             "eventId": f"exit_{self.journey_id}_{int(self.timestamp)}",
@@ -195,12 +198,15 @@ class VehicleExited(VehicleEvent):
             "trackId": self.track_id,
             "vehicleType": self.vehicle_type.value,
             "exitReason": self.exit_reason,
+            "movement": {
+                "direction": self.journey.movement_direction,
+                "entryPosition": {"x": self.journey.entry_pos_x, "y": self.journey.entry_pos_y},
+                "exitPosition": {"x": self.journey.exit_pos_x, "y": self.journey.exit_pos_y},
+            },
             "journeySummary": {
                 "duration": self.journey.journey_duration_seconds,
                 "totalDetections": self.journey.total_detections,
-                "entryPosition": {"x": self.journey.entry_pos_x, "y": self.journey.entry_pos_y},
-                "exitPosition": {"x": self.journey.exit_pos_x, "y": self.journey.exit_pos_y},
-                "movementDirection": self.journey.movement_direction,
+                "bestConfidence": self.journey.best_confidence,
             },
         }
 
