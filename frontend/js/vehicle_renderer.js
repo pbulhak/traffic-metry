@@ -36,13 +36,6 @@ class VehicleRenderer {
             return;
         }
 
-        // Ignore events without known direction
-        const { direction } = movement;
-        if (direction === null || direction === undefined) {
-            console.log(`Ignoring event for vehicle ${vehicleId}: direction is not yet known.`);
-            return;
-        }
-
         // Performance limit check
         if (this.activeVehicles.size >= this.maxVehicles) {
             console.warn('Max vehicles limit reached, skipping new vehicle');
