@@ -95,6 +95,7 @@ class VehicleEntered(VehicleEvent):
     """
 
     detection: DetectionResult
+    movement_direction: str | None  # Direction at time of entry emission
 
     def to_websocket_format(self) -> dict[str, Any]:
         """Convert to WebSocket format with clean, standardized movement structure."""
@@ -106,7 +107,7 @@ class VehicleEntered(VehicleEvent):
             "trackId": self.track_id,
             "vehicleType": self.vehicle_type.value,
             "movement": {
-                "direction": None,  # Direction will be determined dynamically
+                "direction": self.movement_direction,
                 "entryPosition": {"x": self.detection.centroid[0], "y": self.detection.centroid[1]},
             },
             "position": {

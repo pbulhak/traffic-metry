@@ -391,6 +391,7 @@ class VehicleTrackingManager:
                         timestamp=detection.frame_timestamp,
                         vehicle_type=detection.vehicle_type,
                         detection=detection,
+                        movement_direction=vehicle_state.movement_direction,
                     )
                     events.append(entered_event)
                     vehicle_state.journey_entered_emitted = True
