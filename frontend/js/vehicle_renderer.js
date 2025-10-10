@@ -80,33 +80,34 @@ class VehicleRenderer {
     }
     
     /**
-     * Position vehicle based on lane and direction
+     * Position vehicle based on direction
+     * Right: lower lane, Left: upper lane (collision avoidance)
      */
     _positionVehicle(element, movement) {
         const { lane = 1, direction = 'right' } = movement;
-        
-        // Calculate Y position based on lane
-        const topPosition = this._calculateLanePosition(lane);
+
+        // Calculate Y position based on DIRECTION (not lane)
+        const topPosition = this._calculateLanePosition(lane, direction);
         element.style.top = `${topPosition}px`;
-        
+
         // Set animation and initial position based on direction
         switch (direction) {
             case 'left':
                 element.classList.add('flipped', 'move-left');
                 element.style.left = 'calc(100% + 50px)'; // Start from right
                 break;
-                
+
             case 'right':
                 element.classList.add('move-right');
                 element.style.left = '-50px'; // Start from left
                 break;
-                
+
             case 'stationary':
                 element.classList.add('stationary');
                 element.style.left = '50%'; // Center
                 element.style.transform = 'translateX(-50%)';
                 break;
-                
+
             default:
                 // Default to right movement
                 element.classList.add('move-right');
@@ -115,15 +116,21 @@ class VehicleRenderer {
     }
     
     /**
-     * Calculate Y position for a given lane number
+     * Calculate Y position based on direction (not lane number)
+     * Right direction: lower lane (60% of viewport)
+     * Left direction: upper lane (30% of viewport)
      */
-    _calculateLanePosition(lane) {
-        // Ensure lane is a valid number
-        const laneNumber = Math.max(1, parseInt(lane) || 1);
-        
-        // Base offset + (lane - 1) * lane height
-        const baseOffset = 60; // Top margin
-        return baseOffset + ((laneNumber - 1) * this.laneHeight);
+    _calculateLanePosition(lane, direction = 'right') {
+        const containerHeight = this.container ? this.container.clientHeight : 600;
+
+        // Direction-based positioning for collision avoidance
+        if (direction === 'left') {
+            // Upper lane for left-moving vehicles
+            return containerHeight * 0.30;
+        } else {
+            // Lower lane for right-moving vehicles (default)
+            return containerHeight * 0.60;
+        }
     }
     
     /**
