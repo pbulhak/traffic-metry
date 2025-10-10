@@ -33,7 +33,10 @@
 
     /* Vehicle Animation */
     --vehicle-animation-duration: 3s;
-    --vehicle-lane-height: 60px;
+    --vehicle-lane-height: 180px;
+    --vehicle-height: 120px;
+    --vehicle-max-width: 240px;
+    --vehicle-offset: 240px;
 }
 
 /* Reset and Base Styles */
@@ -143,11 +146,11 @@ body {
 .vehicle-sprite {
     position: absolute;
     width: auto;
-    height: 40px;
-    max-width: 80px;
+    height: var(--vehicle-height);
+    max-width: var(--vehicle-max-width);
     z-index: 10;
     opacity: 0.9;
-    filter: drop-shadow(0 2px 4px var(--shadow-color));
+    filter: drop-shadow(0 4px 8px var(--shadow-color));
     will-change: transform, left;
 }
 
@@ -172,7 +175,7 @@ body {
 /* Vehicle Movement Animations */
 @keyframes vehicle-move-right {
     0% {
-        left: -80px;
+        left: calc(-1 * var(--vehicle-offset));
         opacity: 0.9;
     }
     10% {
@@ -182,14 +185,14 @@ body {
         opacity: 1;
     }
     100% {
-        left: calc(100% + 80px);
+        left: calc(100% + var(--vehicle-offset));
         opacity: 0;
     }
 }
 
 @keyframes vehicle-move-left {
     0% {
-        left: calc(100% + 80px);
+        left: calc(100% + var(--vehicle-offset));
         opacity: 0.9;
     }
     10% {
@@ -199,7 +202,7 @@ body {
         opacity: 1;
     }
     100% {
-        left: -80px;
+        left: calc(-1 * var(--vehicle-offset));
         opacity: 0;
     }
 }
