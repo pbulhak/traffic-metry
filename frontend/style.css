@@ -223,7 +223,15 @@ body {
 }
 
 /* Responsive Design */
+
+/* Mobile devices (< 768px) */
 @media (max-width: 767px) {
+    :root {
+        --vehicle-height: 80px;
+        --vehicle-max-width: 160px;
+        --vehicle-offset: 160px;
+    }
+
     .app-header {
         padding: var(--spacing-sm) var(--spacing-md);
     }
@@ -238,5 +246,23 @@ body {
 
     .status-text {
         font-size: 12px;
+    }
+}
+
+/* Tablet devices (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    :root {
+        --vehicle-height: 100px;
+        --vehicle-max-width: 200px;
+        --vehicle-offset: 200px;
+    }
+}
+
+/* Large desktop (> 1440px) */
+@media (min-width: 1440px) {
+    :root {
+        --vehicle-height: 140px;
+        --vehicle-max-width: 280px;
+        --vehicle-offset: 280px;
     }
 }
