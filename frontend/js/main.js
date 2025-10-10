@@ -7,7 +7,8 @@ class TrafficMetryApp {
     constructor() {
         // WebSocket client
         this.wsClient = null;
-        this.wsUrl = 'ws://localhost:8000/ws';
+        // Use relative URL to work with nginx proxy
+        this.wsUrl = `ws://${window.location.host}/ws`;
         
         // Vehicle visualization renderer
         this.vehicleRenderer = null;

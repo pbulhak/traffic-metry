@@ -66,6 +66,9 @@ class VehicleTrackingState:
         self.movement_direction: str | None = None  # "left", "right", "stationary"
         self.direction_analyzer = DynamicDirectionAnalyzer()
 
+        # Journey lifecycle state
+        self.journey_entered_emitted: bool = False  # True after VehicleEntered event was emitted
+
         # Essential metrics
         self.total_detections = 1
         self.best_detection = detection
@@ -357,27 +360,17 @@ class VehicleTrackingManager:
                     self.active_vehicles[track_id] = vehicle_state
                     self.total_vehicles_tracked += 1
 
-                    # Generate VehicleEntered event (with first detection timestamp)
-                    entered_event = VehicleEntered(
-                        track_id=track_id,
-                        journey_id=journey_id,
-                        timestamp=first_detection.frame_timestamp,
-                        vehicle_type=first_detection.vehicle_type,
-                        detection=first_detection,
-                    )
-                    events.append(entered_event)
+                    # DON'T emit VehicleEntered yet - wait for direction to be determined
+                    # Event will be emitted in update loop once direction is known
 
                     # Set initial update time
                     self.last_update_times[track_id] = current_timestamp
-
-                    # Broadcast VehicleEntered event
-                    self._broadcast_event(entered_event, current_frame)
 
                     # Clean up pending
                     del self.pending_tracks[track_id]
 
                     logger.info(
-                        f"✅ Track {track_id} confirmed -> {journey_id} after {self.track_confirmation_threshold} detections"
+                        f"✅ Track {track_id} confirmed -> {journey_id}, waiting for direction before emitting VehicleEntered"
                     )
 
                 else:
@@ -388,6 +381,25 @@ class VehicleTrackingManager:
                 # Update existing confirmed vehicle
                 vehicle_state = self.active_vehicles[track_id]
                 vehicle_state.update(detection)
+
+                # Check if we should emit delayed VehicleEntered
+                if not vehicle_state.journey_entered_emitted and vehicle_state.movement_direction is not None:
+                    # Direction is now known - emit VehicleEntered with CURRENT detection
+                    entered_event = VehicleEntered(
+                        track_id=track_id,
+                        journey_id=vehicle_state.journey_id,
+                        timestamp=detection.frame_timestamp,
+                        vehicle_type=detection.vehicle_type,
+                        detection=detection,
+                        movement_direction=vehicle_state.movement_direction,
+                    )
+                    events.append(entered_event)
+                    vehicle_state.journey_entered_emitted = True
+                    self._broadcast_event(entered_event, current_frame)
+                    logger.info(
+                        f"🚗 VehicleEntered emitted for {vehicle_state.journey_id} "
+                        f"with direction: {vehicle_state.movement_direction}"
+                    )
 
                 # Generate VehicleUpdated event if enough time has passed
                 last_update = self.last_update_times.get(track_id, 0)

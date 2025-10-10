@@ -29,13 +29,13 @@ class VehicleRenderer {
             vehicleType = 'other_vehicle',
             movement = { lane: 1, direction: 'right' }
         } = eventData;
-        
+
         // Prevent duplicate vehicles
         if (this.activeVehicles.has(vehicleId)) {
             console.log('Vehicle already exists, skipping:', vehicleId);
             return;
         }
-        
+
         // Performance limit check
         if (this.activeVehicles.size >= this.maxVehicles) {
             console.warn('Max vehicles limit reached, skipping new vehicle');

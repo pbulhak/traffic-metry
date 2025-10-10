@@ -15,6 +15,7 @@ from typing import Any
 from backend.config import Settings, get_config
 from backend.event_publisher import event_publisher
 from backend.processor import TrafficMetryProcessor
+from backend.vehicle_events import VehicleEntered
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +110,21 @@ class TrafficMetryProcessorWithPublishing(TrafficMetryProcessor):
     async def _process_vehicle_events(self, vehicle_events: list) -> None:
         """Override parent method to add WebSocket event publishing.
 
+        Publishes ONLY VehicleEntered events to WebSocket clients.
+        VehicleUpdated and VehicleExited are processed internally but not sent to frontend.
+
         Args:
             vehicle_events: List of VehicleEvent objects (VehicleEntered, VehicleUpdated, VehicleExited)
         """
         # Call parent processing first
         await super()._process_vehicle_events(vehicle_events)
 
-        # Then publish events to WebSocket clients
+        # Publish ONLY VehicleEntered events to WebSocket clients
         for event in vehicle_events:
+            # Filter: only VehicleEntered
+            if not isinstance(event, VehicleEntered):
+                continue
+
             try:
                 # Convert event to WebSocket format and publish
                 websocket_event = event.to_websocket_format()
