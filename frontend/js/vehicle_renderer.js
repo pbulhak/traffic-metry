@@ -79,7 +79,7 @@ class VehicleRenderer {
     
     /**
      * Position vehicle based on direction only
-     * Right: lower lane (60% of viewport), Left: upper lane (30% of viewport)
+     * Right: lower lane (55% of viewport), Left: upper lane (40% of viewport)
      */
     _positionVehicle(element, direction = 'right') {
         // Calculate Y position based on DIRECTION only
@@ -109,8 +109,8 @@ class VehicleRenderer {
     
     /**
      * Calculate Y position based on direction only
-     * Right direction: lower lane (60% of viewport)
-     * Left direction: upper lane (30% of viewport)
+     * Right direction: lower lane (55% of viewport)
+     * Left direction: upper lane (40% of viewport)
      */
     _calculateLanePosition(direction = 'right') {
         let containerHeight = this.container ? this.container.clientHeight : 0;
@@ -120,11 +120,11 @@ class VehicleRenderer {
             containerHeight = window.innerHeight - 60; // Subtract header height
         }
 
-        // Direction-based positioning for collision avoidance
+        // Direction-based positioning for minimal gap between lanes
         if (direction === 'left') {
-            return containerHeight * 0.30; // Upper lane
+            return containerHeight * 0.40; // Upper lane
         } else {
-            return containerHeight * 0.60; // Lower lane (default)
+            return containerHeight * 0.55; // Lower lane (default)
         }
     }
     
