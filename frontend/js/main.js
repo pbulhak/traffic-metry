@@ -17,20 +17,15 @@ class TrafficMetryApp {
         this.connectionStatus = null;
         this.statusIndicator = null;
         this.statusText = null;
-        this.eventsCount = null;
-        this.connectionTime = null;
-        this.placeholderMessage = null;
-        
+
         // App state
         this.eventsReceived = 0;
         this.connectionStartTime = null;
-        this.connectionTimer = null;
-        
+
         // Bind methods
         this.handleVehicleEvent = this.handleVehicleEvent.bind(this);
         this.handleConnectionStatus = this.handleConnectionStatus.bind(this);
         this.handleError = this.handleError.bind(this);
-        this.updateConnectionTimer = this.updateConnectionTimer.bind(this);
     }
     
     /**
@@ -71,20 +66,14 @@ class TrafficMetryApp {
         this.connectionStatus = document.getElementById('connectionStatus');
         this.statusIndicator = document.getElementById('statusIndicator');
         this.statusText = document.getElementById('statusText');
-        this.eventsCount = document.getElementById('eventsCount');
-        this.connectionTime = document.getElementById('connectionTime');
-        this.placeholderMessage = document.getElementById('placeholderMessage');
-        
-        // Verify all elements are found
+
+        // Verify required elements are found
         const elements = {
             connectionStatus: this.connectionStatus,
             statusIndicator: this.statusIndicator,
-            statusText: this.statusText,
-            eventsCount: this.eventsCount,
-            connectionTime: this.connectionTime,
-            placeholderMessage: this.placeholderMessage
+            statusText: this.statusText
         };
-        
+
         for (const [name, element] of Object.entries(elements)) {
             if (!element) {
                 console.error(`Required DOM element not found: ${name}`);
@@ -153,7 +142,6 @@ class TrafficMetryApp {
             if (this.vehicleRenderer) {
                 this.vehicleRenderer.clearAll();
             }
-            this._clearConnectionTimer();
         });
     }
     
@@ -193,13 +181,8 @@ class TrafficMetryApp {
             }
         }
 
-        // Update counters and UI
+        // Update counters
         this.eventsReceived++;
-        this._updateEventsCounter();
-
-        if (this.placeholderMessage && this.placeholderMessage.style.display !== 'none') {
-            this.placeholderMessage.style.display = 'none';
-        }
     }
     
     /**
@@ -216,9 +199,6 @@ class TrafficMetryApp {
         // Handle connection timing
         if (status === 'connected') {
             this.connectionStartTime = Date.now();
-            this._startConnectionTimer();
-        } else if (status === 'closed' || status === 'error') {
-            this._clearConnectionTimer();
         }
     }
     
@@ -292,52 +272,6 @@ class TrafficMetryApp {
         console.log(`UI status updated: ${status}`);
     }
     
-    /**
-     * Update events counter in UI
-     */
-    _updateEventsCounter() {
-        if (this.eventsCount) {
-            this.eventsCount.textContent = this.eventsReceived.toString();
-        }
-    }
-    
-    /**
-     * Start connection timer to show connection duration
-     */
-    _startConnectionTimer() {
-        this._clearConnectionTimer();
-        
-        this.connectionTimer = setInterval(this.updateConnectionTimer, 1000);
-    }
-    
-    /**
-     * Update connection timer display
-     */
-    updateConnectionTimer() {
-        if (!this.connectionTime || !this.connectionStartTime) {
-            return;
-        }
-        
-        const elapsed = Math.floor((Date.now() - this.connectionStartTime) / 1000);
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-        
-        this.connectionTime.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    
-    /**
-     * Clear connection timer
-     */
-    _clearConnectionTimer() {
-        if (this.connectionTimer) {
-            clearInterval(this.connectionTimer);
-            this.connectionTimer = null;
-        }
-        
-        if (this.connectionTime) {
-            this.connectionTime.textContent = '--:--';
-        }
-    }
 }
 
 // Initialize app when script loads

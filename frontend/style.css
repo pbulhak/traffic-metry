@@ -1,47 +1,42 @@
-/* TrafficMetry Frontend - Dark Theme Styling */
+/* TrafficMetry Frontend - Clean White Theme */
 
 :root {
-    /* Color Scheme - Dark Theme */
-    --bg-primary: #1a1a1a;      /* Main background */
-    --bg-secondary: #2d2d2d;    /* Cards, panels */
-    --bg-tertiary: #3a3a3a;     /* Hover states */
-    --text-primary: #ffffff;     /* Main text */
-    --text-secondary: #b3b3b3;   /* Secondary text */
-    --text-muted: #808080;       /* Muted text */
-    
+    /* Color Scheme - White Theme */
+    --bg-primary: #ffffff;       /* Main background */
+    --bg-secondary: #f8f9fa;     /* Header background */
+    --text-primary: #1a1a1a;     /* Main text */
+    --text-secondary: #6b7280;   /* Secondary text */
+
     /* Status Colors */
     --status-connecting: #fbbf24; /* Yellow - Connecting */
-    --status-connected: #4ade80;  /* Green - Connected */
-    --status-error: #f87171;      /* Red - Error */
+    --status-connected: #10b981;  /* Green - Connected */
+    --status-error: #ef4444;      /* Red - Error */
     --status-disconnected: #9ca3af; /* Gray - Disconnected */
-    
+
     /* Accent Colors */
-    --border-color: #404040;      /* Borders */
-    --border-light: #525252;      /* Light borders */
-    --shadow-color: rgba(0, 0, 0, 0.3);
-    
+    --border-color: #e5e7eb;     /* Borders */
+    --shadow-color: rgba(0, 0, 0, 0.1);
+
     /* Typography */
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     --font-size-base: 16px;
     --font-size-small: 14px;
     --font-size-large: 18px;
-    --font-size-xl: 24px;
-    
+
     /* Spacing */
-    --spacing-xs: 0.25rem;
     --spacing-sm: 0.5rem;
     --spacing-md: 1rem;
     --spacing-lg: 1.5rem;
-    --spacing-xl: 2rem;
-    
+
     /* Border Radius */
-    --radius-sm: 4px;
     --radius-md: 8px;
-    --radius-lg: 12px;
-    
+
     /* Vehicle Animation */
     --vehicle-animation-duration: 3s;
-    --vehicle-lane-height: 60px;
+    --vehicle-lane-height: 180px;
+    --vehicle-height: 120px;
+    --vehicle-max-width: 240px;
+    --vehicle-offset: 240px;
 }
 
 /* Reset and Base Styles */
@@ -58,8 +53,10 @@ body {
     color: var(--text-primary);
     background-color: var(--bg-primary);
     min-height: 100vh;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    overflow: hidden;
 }
 
 /* Header Styles */
@@ -70,10 +67,11 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .app-header h1 {
-    font-size: var(--font-size-xl);
+    font-size: var(--font-size-large);
     font-weight: 600;
     color: var(--text-primary);
 }
@@ -83,7 +81,7 @@ body {
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
-    background-color: var(--bg-tertiary);
+    background-color: var(--bg-primary);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
 }
@@ -118,104 +116,7 @@ body {
     font-weight: 500;
 }
 
-/* Main Content */
-.app-main {
-    padding: var(--spacing-lg);
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--spacing-lg);
-    max-width: 1200px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-/* Events Section */
-.events-section {
-    background-color: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    border: 1px solid var(--border-color);
-}
-
-.events-section h2 {
-    font-size: var(--font-size-large);
-    margin-bottom: var(--spacing-md);
-    color: var(--text-primary);
-}
-
-.events-container {
-    min-height: 400px;
-    max-height: 600px;
-    overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background-color: var(--bg-primary);
-}
-
-.placeholder-message {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 400px;
-    color: var(--text-muted);
-    text-align: center;
-}
-
-.placeholder-message p {
-    margin-bottom: var(--spacing-sm);
-}
-
-.placeholder-message .small-text {
-    font-size: var(--font-size-small);
-    opacity: 0.7;
-}
-
-/* Stats Panel */
-.stats-panel {
-    background-color: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    border: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.stat-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-sm) 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.stat-item:last-child {
-    border-bottom: none;
-}
-
-.stat-label {
-    font-size: var(--font-size-small);
-    color: var(--text-secondary);
-}
-
-.stat-value {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--font-size-base);
-}
-
-/* Footer */
-.app-footer {
-    background-color: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
-    padding: var(--spacing-md) var(--spacing-lg);
-    text-align: center;
-    color: var(--text-muted);
-    font-size: var(--font-size-small);
-}
-
-/* Animations */
+/* Pulse Animation */
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
@@ -225,116 +126,32 @@ body {
     }
 }
 
-/* Scrollbar Styling */
-.events-container::-webkit-scrollbar {
-    width: 8px;
+/* Main Content - Fullscreen */
+.app-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
 }
 
-.events-container::-webkit-scrollbar-track {
-    background: var(--bg-primary);
-    border-radius: var(--radius-sm);
-}
-
-.events-container::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: var(--radius-sm);
-}
-
-.events-container::-webkit-scrollbar-thumb:hover {
-    background: var(--border-light);
-}
-
-/* Responsive Design */
-
-/* Tablet (768px - 1024px) */
-@media (min-width: 768px) {
-    .app-main {
-        grid-template-columns: 2fr 1fr;
-    }
-    
-    .app-header {
-        padding: var(--spacing-lg) var(--spacing-xl);
-    }
-    
-    .events-container {
-        max-height: 500px;
-    }
-}
-
-/* Desktop (> 1024px) */
-@media (min-width: 1024px) {
-    .app-main {
-        padding: var(--spacing-xl);
-        gap: var(--spacing-xl);
-    }
-    
-    .events-section {
-        padding: var(--spacing-xl);
-    }
-    
-    .stats-panel {
-        padding: var(--spacing-xl);
-    }
-    
-    .events-container {
-        max-height: 600px;
-    }
-}
-
-/* Mobile Optimizations (< 768px) */
-@media (max-width: 767px) {
-    .app-header {
-        padding: var(--spacing-md);
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        text-align: center;
-    }
-    
-    .app-header h1 {
-        font-size: var(--font-size-large);
-    }
-    
-    .app-main {
-        padding: var(--spacing-md);
-        gap: var(--spacing-md);
-    }
-    
-    .events-section,
-    .stats-panel {
-        padding: var(--spacing-md);
-    }
-    
-    .events-container {
-        min-height: 300px;
-        max-height: 400px;
-    }
-    
-    .stats-panel {
-        order: -1; /* Show stats above events on mobile */
-    }
-}
-
-/* Traffic Visualization Section */
+/* Traffic Visualization - Fullscreen */
 .traffic-visualization {
     position: relative;
     width: 100%;
-    height: 400px;
+    height: 100%;
     background-color: var(--bg-primary);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    margin-bottom: var(--spacing-md);
+    overflow: visible;
+    z-index: 1;
 }
 
 /* Vehicle Sprite Styling */
 .vehicle-sprite {
     position: absolute;
     width: auto;
-    height: 40px;
-    max-width: 80px;
+    height: var(--vehicle-height);
+    max-width: var(--vehicle-max-width);
     z-index: 10;
     opacity: 0.9;
-    filter: drop-shadow(0 2px 4px var(--shadow-color));
+    filter: drop-shadow(0 4px 8px var(--shadow-color));
     will-change: transform, left;
 }
 
@@ -359,7 +176,7 @@ body {
 /* Vehicle Movement Animations */
 @keyframes vehicle-move-right {
     0% {
-        left: -80px;
+        left: calc(-1 * var(--vehicle-offset));
         opacity: 0.9;
     }
     10% {
@@ -369,14 +186,14 @@ body {
         opacity: 1;
     }
     100% {
-        left: calc(100% + 80px);
+        left: calc(100% + var(--vehicle-offset));
         opacity: 0;
     }
 }
 
 @keyframes vehicle-move-left {
     0% {
-        left: calc(100% + 80px);
+        left: calc(100% + var(--vehicle-offset));
         opacity: 0.9;
     }
     10% {
@@ -386,7 +203,7 @@ body {
         opacity: 1;
     }
     100% {
-        left: -80px;
+        left: calc(-1 * var(--vehicle-offset));
         opacity: 0;
     }
 }
@@ -406,48 +223,47 @@ body {
     }
 }
 
-/* Lane Guidelines (Optional Visual Aid) */
-.traffic-visualization::before {
-    content: '';
-    position: absolute;
-    top: 60px;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent 0%, var(--border-color) 20%, var(--border-color) 80%, transparent 100%);
-    opacity: 0.3;
-}
+/* Responsive Design */
 
-.traffic-visualization::after {
-    content: '';
-    position: absolute;
-    top: 120px;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent 0%, var(--border-color) 20%, var(--border-color) 80%, transparent 100%);
-    opacity: 0.3;
-}
-
-/* Responsive Vehicle Sizing */
+/* Mobile devices (< 768px) */
 @media (max-width: 767px) {
-    .traffic-visualization {
-        height: 300px;
+    :root {
+        --vehicle-height: 80px;
+        --vehicle-max-width: 160px;
+        --vehicle-offset: 160px;
     }
-    
-    .vehicle-sprite {
-        height: 30px;
-        max-width: 60px;
+
+    .app-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .app-header h1 {
+        font-size: var(--font-size-base);
+    }
+
+    .connection-status {
+        padding: 0.25rem 0.5rem;
+    }
+
+    .status-text {
+        font-size: 12px;
     }
 }
 
-@media (min-width: 1024px) {
-    .traffic-visualization {
-        height: 500px;
+/* Tablet devices (768px - 1024px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    :root {
+        --vehicle-height: 100px;
+        --vehicle-max-width: 200px;
+        --vehicle-offset: 200px;
     }
-    
-    .vehicle-sprite {
-        height: 50px;
-        max-width: 100px;
+}
+
+/* Large desktop (> 1440px) */
+@media (min-width: 1440px) {
+    :root {
+        --vehicle-height: 140px;
+        --vehicle-max-width: 280px;
+        --vehicle-offset: 280px;
     }
 }

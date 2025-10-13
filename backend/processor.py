@@ -352,7 +352,7 @@ class TrafficMetryProcessor:
 
                         # Log statistics periodically
                         current_time = time.time()
-                        if current_time - last_stats_time >= 60:  # Every minute
+                        if current_time - last_stats_time >= 3600:  # Every hour
                             self._log_statistics(current_time - start_time)
                             last_stats_time = current_time
 
@@ -487,8 +487,8 @@ class TrafficMetryProcessor:
             f"Candidates: {self.event_candidate_saver.get_statistics()['saved_candidates']}"
         )
 
-        # 📊 ADDITIONAL DETAILED METRICS (every 5 minutes for deep analysis)
-        if elapsed_time > 0 and int(elapsed_time) % 300 == 0:  # Every 5 minutes
+        # 📊 ADDITIONAL DETAILED METRICS (every 3 hours for deep analysis)
+        if elapsed_time > 0 and int(elapsed_time) % 10800 == 0:  # Every 3 hours
             frame_intervals_count = len(self.camera_fps_tracker["frame_intervals"])
             processing_times_count = len(self.processing_fps_tracker["processing_times"])
 
